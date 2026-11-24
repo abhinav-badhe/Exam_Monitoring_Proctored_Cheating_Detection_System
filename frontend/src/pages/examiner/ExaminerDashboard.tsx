@@ -158,6 +158,13 @@ export const ExaminerDashboard: React.FC = () => {
                           Manage Questions
                         </Link>
                         <Link
+                          to={`/examiner/exams/${exam.id}/live`}
+                          className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition flex items-center gap-1 border border-emerald-200"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Live Proctor
+                        </Link>
+                        <Link
                           to={`/examiner/exams/${exam.id}/results`}
                           className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition flex items-center gap-1"
                         >

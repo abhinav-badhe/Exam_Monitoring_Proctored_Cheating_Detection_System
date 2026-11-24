@@ -273,6 +273,19 @@ export async function getExamResults(examId: string, examinerId: string, userRol
         orderBy: { createdAt: "desc" },
         take: 1
       },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          reviewer: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true
+            }
+          }
+        }
+      },
       _count: {
         select: {
           events: true,
@@ -281,6 +294,68 @@ export async function getExamResults(examId: string, examinerId: string, userRol
       }
     },
     orderBy: { submittedAt: "desc" }
+  });
+}
+
+export async function createReviewRecord(
+  attemptId: string,
+  reviewerId: string,
+  decision: "CLEARED" | "FLAGGED_FOR_INQUIRY" | "DISQUALIFIED",
+  notes?: string
+) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  const validDecisions = ["CLEARED", "FLAGGED_FOR_INQUIRY", "DISQUALIFIED"];
+  if (!validDecisions.includes(decision)) {
+    throw new Error(`Invalid review decision. Must be one of: ${validDecisions.join(", ")}`);
+  }
+
+  return prisma.reviewRecord.create({
+    data: {
+      attemptId,
+      reviewerId,
+      decision,
+      notes: notes || null
+    },
+    include: {
+      reviewer: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true
+        }
+      }
+    }
+  });
+}
+
+export async function getAttemptReviews(attemptId: string) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  return prisma.reviewRecord.findMany({
+    where: { attemptId },
+    include: {
+      reviewer: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
   });
 }
 

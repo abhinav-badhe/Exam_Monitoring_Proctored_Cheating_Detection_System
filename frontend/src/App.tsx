@@ -13,6 +13,7 @@ import { ExaminerDashboard } from "./pages/examiner/ExaminerDashboard";
 import { CreateExamPage } from "./pages/examiner/CreateExamPage";
 import { ExamDetailsPage } from "./pages/examiner/ExamDetailsPage";
 import { ExamResultsPage } from "./pages/examiner/ExamResultsPage";
+import { LiveProctorDashboard } from "./pages/examiner/LiveProctorDashboard";
 
 // Candidate Pages
 import { CandidateDashboard } from "./pages/candidate/CandidateDashboard";
@@ -70,6 +71,7 @@ export const App: React.FC = () => {
                         <Route path="/examiner" element={<ExaminerDashboard />} />
                         <Route path="/examiner/exams/create" element={<CreateExamPage />} />
                         <Route path="/examiner/exams/:id" element={<ExamDetailsPage />} />
+                        <Route path="/examiner/exams/:id/live" element={<LiveProctorDashboard />} />
                         <Route path="/examiner/exams/:examId/results" element={<ExamResultsPage />} />
                       </Route>
 

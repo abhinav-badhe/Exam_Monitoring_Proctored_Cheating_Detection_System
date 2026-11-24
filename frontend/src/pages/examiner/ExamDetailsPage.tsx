@@ -154,12 +154,19 @@ export const ExamDetailsPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              to={`/examiner/exams/${exam.id}/live`}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition flex items-center gap-1.5 shadow-xs"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+              Live Proctor Monitor
+            </Link>
             <button
               onClick={handleTogglePublish}
               className={`px-4 py-2 text-sm font-semibold rounded-lg transition ${
                 exam.status === "PUBLISHED"
                   ? "bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
               }`}
             >
               {exam.status === "PUBLISHED" ? "Unpublish to Draft" : "Publish Examination"}

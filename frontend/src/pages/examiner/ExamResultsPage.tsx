@@ -19,6 +19,11 @@ export const ExamResultsPage: React.FC = () => {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [evaluatingAnomaly, setEvaluatingAnomaly] = useState(false);
 
+  // Review state inside modal
+  const [reviewDecision, setReviewDecision] = useState<string>("CLEARED");
+  const [reviewNotes, setReviewNotes] = useState<string>("");
+  const [savingReview, setSavingReview] = useState(false);
+
   const fetchData = async () => {
     if (!examId) return;
     try {
@@ -66,6 +71,26 @@ export const ExamResultsPage: React.FC = () => {
       console.error("Failed to run anomaly evaluation:", err);
     } finally {
       setEvaluatingAnomaly(false);
+    }
+  };
+
+  const handleSaveReview = async () => {
+    if (!selectedAttempt) return;
+    setSavingReview(true);
+    try {
+      await attemptService.createReview(selectedAttempt.id, {
+        decision: reviewDecision,
+        notes: reviewNotes
+      });
+      await fetchData();
+      const updated = await attemptService.getExamResults(examId!);
+      const current = updated.find((a) => a.id === selectedAttempt.id);
+      if (current) setSelectedAttempt(current);
+      alert("Review verdict successfully saved.");
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to save review");
+    } finally {
+      setSavingReview(false);
     }
   };
 
@@ -143,24 +168,36 @@ export const ExamResultsPage: React.FC = () => {
       </Link>
 
       {/* Header */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 mb-8">
-        <h1 className="text-xl font-bold text-slate-900">
-          Submissions & Proctoring Audit: {exam?.title}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Automated evaluation scores, multi-signal behavioural risk indicators, and proctoring telemetry audit
-        </p>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">
+            Submissions & Proctoring Audit: {exam?.title}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Automated evaluation scores, multi-signal behavioural risk indicators, and human proctoring audit
+          </p>
 
-        <div className="mt-4 flex items-center gap-6 text-xs text-slate-600">
-          <span className="flex items-center gap-1.5">
-            <Users className="w-4 h-4 text-slate-400" />
-            Total Submissions: <strong className="text-slate-900">{results.length}</strong>
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1.5">
-            <Trophy className="w-4 h-4 text-slate-400" />
-            Total Examination Marks: <strong className="text-slate-900">{exam?.totalMarks || 0}</strong>
-          </span>
+          <div className="mt-4 flex items-center gap-6 text-xs text-slate-600">
+            <span className="flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-slate-400" />
+              Total Submissions: <strong className="text-slate-900">{results.length}</strong>
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-slate-400" />
+              Total Examination Marks: <strong className="text-slate-900">{exam?.totalMarks || 0}</strong>
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <Link
+            to={`/examiner/exams/${examId}/live`}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5"
+          >
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+            Live Proctor Monitor
+          </Link>
         </div>
       </div>
 
@@ -189,12 +226,14 @@ export const ExamResultsPage: React.FC = () => {
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5">Exam Score</th>
                   <th className="px-6 py-3.5">Anomaly Risk Score</th>
+                  <th className="px-6 py-3.5">Human Verdict</th>
                   <th className="px-6 py-3.5 text-right">Audit Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {results.map((att: any) => {
                   const latestScore = att.scores && att.scores.length > 0 ? att.scores[0] : null;
+                  const latestReview = att.reviews && att.reviews.length > 0 ? att.reviews[0] : null;
                   return (
                     <tr key={att.id} className="hover:bg-slate-50/75 transition">
                       <td className="px-6 py-4 font-semibold text-slate-900">
@@ -222,6 +261,23 @@ export const ExamResultsPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         {getRiskBadge(latestScore)}
+                      </td>
+                      <td className="px-6 py-4">
+                        {latestReview ? (
+                          <span
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
+                              latestReview.decision === "CLEARED"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : latestReview.decision === "DISQUALIFIED"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}
+                          >
+                            {latestReview.decision}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Unreviewed</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -327,6 +383,74 @@ export const ExamResultsPage: React.FC = () => {
                   </button>
                 </div>
               )}
+
+              {/* Examiner Human Verdict & Review Section */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <span>⚖️ Human Examiner Verdict</span>
+                  </h4>
+                  {selectedAttempt.reviews && selectedAttempt.reviews.length > 0 && (
+                    <span className="text-2xs text-slate-500">
+                      Last reviewed by {selectedAttempt.reviews[0].reviewer?.fullName || "Examiner"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision("CLEARED")}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-semibold border transition ${
+                      reviewDecision === "CLEARED"
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    ✅ Cleared
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision("FLAGGED_FOR_INQUIRY")}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-semibold border transition ${
+                      reviewDecision === "FLAGGED_FOR_INQUIRY"
+                        ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    ⚠️ Flag for Inquiry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision("DISQUALIFIED")}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-semibold border transition ${
+                      reviewDecision === "DISQUALIFIED"
+                        ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    🚫 Disqualify
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={reviewNotes}
+                    onChange={(e) => setReviewNotes(e.target.value)}
+                    placeholder="Examiner justification or exoneration notes..."
+                    className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveReview}
+                    disabled={savingReview}
+                    className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition disabled:opacity-50"
+                  >
+                    {savingReview ? "Saving..." : "Save Verdict"}
+                  </button>
+                </div>
+              </div>
 
               {/* Event Stream Section */}
               <div>

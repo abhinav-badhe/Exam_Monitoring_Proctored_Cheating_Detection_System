@@ -72,6 +72,20 @@ export interface AnomalyScore {
   createdAt: string;
 }
 
+export interface ReviewRecord {
+  id: string;
+  attemptId: string;
+  reviewerId: string;
+  decision: "CLEARED" | "FLAGGED_FOR_INQUIRY" | "DISQUALIFIED" | string;
+  notes?: string | null;
+  createdAt: string;
+  reviewer?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+}
+
 export interface ExamAttempt {
   id: string;
   examId: string;
@@ -85,4 +99,5 @@ export interface ExamAttempt {
   answers: Answer[];
   candidate?: User;
   scores?: AnomalyScore[];
+  reviews?: ReviewRecord[];
 }

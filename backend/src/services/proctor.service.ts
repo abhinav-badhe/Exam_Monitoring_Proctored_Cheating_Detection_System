@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { IngestEventsInput, SingleProctorEvent } from "../validators/proctor.validator";
 import { AttemptStatus, EventSeverity, UserRole, RiskLevel } from "@prisma/client";
+import { broadcastExamAlert } from "../socket";
 import fs from "fs";
 import path from "path";
 
@@ -25,7 +26,12 @@ const DEFAULT_SEVERITIES: Record<string, EventSeverity> = {
 
 export async function ingestProctorEvents(candidateId: string, data: IngestEventsInput) {
   const attempt = await prisma.examAttempt.findUnique({
-    where: { id: data.attemptId }
+    where: { id: data.attemptId },
+    include: {
+      candidate: {
+        select: { id: true, fullName: true, email: true }
+      }
+    }
   });
 
   if (!attempt) {
@@ -56,6 +62,24 @@ export async function ingestProctorEvents(candidateId: string, data: IngestEvent
   await prisma.proctorEvent.createMany({
     data: eventsToCreate
   });
+
+  // Broadcast high/medium/critical alerts to live examiner room
+  for (const evt of eventsToCreate) {
+    if (evt.severity !== EventSeverity.INFO || evt.eventType.includes("FULLSCREEN")) {
+      broadcastExamAlert(attempt.examId, {
+        attemptId: attempt.id,
+        candidate: {
+          id: attempt.candidate.id,
+          fullName: attempt.candidate.fullName,
+          email: attempt.candidate.email
+        },
+        eventType: evt.eventType,
+        severity: evt.severity,
+        metadata: evt.metadata,
+        createdAt: evt.createdAt
+      });
+    }
+  }
 
   return {
     success: true,
@@ -103,7 +127,12 @@ export async function analyzeAndLogFrame(
   mimeType: string
 ) {
   const attempt = await prisma.examAttempt.findUnique({
-    where: { id: attemptId }
+    where: { id: attemptId },
+    include: {
+      candidate: {
+        select: { id: true, fullName: true, email: true }
+      }
+    }
   });
 
   if (!attempt) {
@@ -162,9 +191,27 @@ export async function analyzeAndLogFrame(
           metadata: {
             description: anom.description,
             confidence: anom.confidence,
+            source: "WEBCAM",
             ...(anom.metadata ?? {})
           }
         }
+      });
+
+      broadcastExamAlert(attempt.examId, {
+        attemptId: attempt.id,
+        candidate: {
+          id: attempt.candidate.id,
+          fullName: attempt.candidate.fullName,
+          email: attempt.candidate.email
+        },
+        eventType: anom.eventType,
+        severity,
+        metadata: {
+          description: anom.description,
+          confidence: anom.confidence,
+          source: "WEBCAM"
+        },
+        createdAt: event.createdAt
       });
 
       if (severity === EventSeverity.HIGH || severity === EventSeverity.CRITICAL) {
@@ -194,7 +241,12 @@ export async function analyzeAndLogScreenFrame(
   mimeType: string
 ) {
   const attempt = await prisma.examAttempt.findUnique({
-    where: { id: attemptId }
+    where: { id: attemptId },
+    include: {
+      candidate: {
+        select: { id: true, fullName: true, email: true }
+      }
+    }
   });
 
   if (!attempt) {
@@ -251,9 +303,27 @@ export async function analyzeAndLogScreenFrame(
           metadata: {
             description: anom.description,
             confidence: anom.confidence,
+            source: "SCREEN",
             ...(anom.metadata ?? {})
           }
         }
+      });
+
+      broadcastExamAlert(attempt.examId, {
+        attemptId: attempt.id,
+        candidate: {
+          id: attempt.candidate.id,
+          fullName: attempt.candidate.fullName,
+          email: attempt.candidate.email
+        },
+        eventType: anom.eventType,
+        severity,
+        metadata: {
+          description: anom.description,
+          confidence: anom.confidence,
+          source: "SCREEN"
+        },
+        createdAt: event.createdAt
       });
 
       const filename = `screen_${attemptId}_${Date.now()}.jpg`;

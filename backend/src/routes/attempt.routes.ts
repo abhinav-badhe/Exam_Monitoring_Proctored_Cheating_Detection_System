@@ -52,4 +52,20 @@ router.get(
   attemptController.getExamResults
 );
 
+// Examiner records a human review verdict (CLEARED, FLAGGED_FOR_INQUIRY, DISQUALIFIED)
+router.post(
+  "/:id/reviews",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  attemptController.createReview
+);
+
+// Examiner / Admin views audit reviews for an attempt
+router.get(
+  "/:id/reviews",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  attemptController.getAttemptReviews
+);
+
 export default router;

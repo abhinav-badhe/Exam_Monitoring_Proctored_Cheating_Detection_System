@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import http from "http";
 import app from "./app";
 import { prisma } from "./config/database";
+import { initSocket } from "./socket";
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,7 +13,11 @@ async function startServer() {
     await prisma.$connect();
     console.log("✅ PostgreSQL Database connected successfully");
 
-    app.listen(PORT, () => {
+    const httpServer = http.createServer(app);
+    initSocket(httpServer);
+    console.log("✅ Socket.IO Real-Time Server initialized");
+
+    httpServer.listen(PORT, () => {
       console.log(`🚀 ProctorAI API server running on http://localhost:${PORT}`);
       console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
     });

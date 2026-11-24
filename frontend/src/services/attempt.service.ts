@@ -33,5 +33,18 @@ export const attemptService = {
   async getCandidateResult(attemptId: string): Promise<ExamAttempt> {
     const res = await api.get(`/attempts/${attemptId}/result`);
     return res.data.data;
+  },
+
+  async createReview(
+    attemptId: string,
+    data: { decision: "CLEARED" | "FLAGGED_FOR_INQUIRY" | "DISQUALIFIED" | string; notes?: string }
+  ) {
+    const res = await api.post(`/attempts/${attemptId}/reviews`, data);
+    return res.data.data;
+  },
+
+  async getAttemptReviews(attemptId: string) {
+    const res = await api.get(`/attempts/${attemptId}/reviews`);
+    return res.data.data;
   }
 };

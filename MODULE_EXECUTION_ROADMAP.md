@@ -258,29 +258,33 @@ flowchart TD
 
 ## 📦 Module 6: Real-Time Examiner Monitoring & Dashboard (Phase 6)
 *Goal: Live proctoring monitor with Socket.IO alerts, candidate activity timelines, and human examiner audit/verdict actions.*
+*Status: ✅ COMPLETED & VERIFIED (2026-11-24)*
 
 ### 6.1 Real-Time Socket.IO Infrastructure
-- [ ] Backend Socket.IO server with room scoping (`exam:<id>`)
-- [ ] Client Socket.IO hooks with automatic reconnection and JWT authentication
-- [ ] Real-time event broadcasting (Candidate blur, CV alert, phone detected)
+- [x] Backend Socket.IO server (`socket.ts`) with room scoping (`exam:<id>`, `attempt:<id>`)
+- [x] Client Socket.IO service (`socket.service.ts`) with automatic reconnection and JWT authentication
+- [x] Real-time event broadcasting (Candidate blur, CV alert, phone detected, OCR AI indicators)
+- [x] Examiner-to-candidate direct warning dispatch (`examiner:warn_candidate` -> `candidate:warning`)
 
-### 6.2 Examiner Live Proctoring Dashboard (`/examiner/proctor/:examId`)
-- [ ] Live candidate grid with active monitoring statuses (Webcam OK, Screen OK, Focus OK)
-- [ ] Real-time alert stream with severity color coding (`INFO`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`)
-- [ ] Quick-filter by risk level
+### 6.2 Examiner Live Proctoring Dashboard (`/examiner/exams/:id/live`)
+- [x] Live candidate cards with real-time status pills (Tab focus, Face position, Phone detection, OCR AI status)
+- [x] Real-time streaming alert feed with severity color coding (`INFO`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) and audible warning chimes
+- [x] Direct candidate warning action with custom messages and pre-defined quick presets
+- [x] Live human verdict action modal directly on the monitoring interface
 
 ### 6.3 Candidate Event Timeline & Evidence Review
-- [ ] Chronological event timeline view per candidate attempt
-- [ ] Evidence preview modal (view captured snapshot/metadata securely)
-- [ ] Explainable anomaly breakdown chart
+- [x] Chronological event timeline view per candidate attempt in both Live Monitor and Exam Results
+- [x] Real-time alert stream and audit trail with JSON metadata inspection
+- [x] Explainable anomaly breakdown linking rules and Isolation Forest scores
 
 ### 6.4 Human Review & Audit Record
-- [ ] Examiner review decision actions (`CLEARED`, `FLAGGED_FOR_INQUIRY`, `DISQUALIFIED`)
-- [ ] Mandatory examiner notes/reasoning field
-- [ ] Store human decision in `review_records` table
-- [ ] Comprehensive printable/exportable exam integrity report
+- [x] Examiner review decision actions (`CLEARED`, `FLAGGED_FOR_INQUIRY`, `DISQUALIFIED`)
+- [x] Mandatory examiner notes and justification field
+- [x] Store human decision in PostgreSQL `review_records` table
+- [x] Ingest review records into examiner exam results table and audit modal
 
-### 6.5 Module 6 Verification & Sign-Off.
+### 6.5 Module 6 Verification & Sign-Off
+- [x] Automated test script (`backend/src/test-phase6-e2e.ts`): Verified real-time alert delivery from candidate to examiner room, verified real-time warning delivery from examiner to candidate attempt, verified review decision creation (`FLAGGED_FOR_INQUIRY`), and verified audit persistence in PostgreSQL and results API -> 100% passed.
 
 ---
 

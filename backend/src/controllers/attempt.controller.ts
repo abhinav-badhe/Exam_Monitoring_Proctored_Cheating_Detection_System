@@ -73,3 +73,31 @@ export async function getCandidateResult(req: Request, res: Response) {
     return sendError(res, error.message || "Failed to retrieve result", 404);
   }
 }
+
+export async function createReview(req: Request, res: Response) {
+  try {
+    const { decision, notes } = req.body;
+    if (!decision) {
+      return sendError(res, "Review decision is required", 400);
+    }
+
+    const review = await attemptService.createReviewRecord(
+      req.params.id as string,
+      req.user!.userId,
+      decision,
+      notes
+    );
+    return sendSuccess(res, review, "Review decision recorded successfully", 201);
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to record review", 400);
+  }
+}
+
+export async function getAttemptReviews(req: Request, res: Response) {
+  try {
+    const reviews = await attemptService.getAttemptReviews(req.params.id as string);
+    return sendSuccess(res, reviews, "Attempt reviews retrieved successfully");
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to retrieve reviews", 400);
+  }
+}

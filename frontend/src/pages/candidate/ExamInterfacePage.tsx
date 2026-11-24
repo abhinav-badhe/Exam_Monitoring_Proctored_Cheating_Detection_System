@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { attemptService } from "../../services/attempt.service";
+import { getSocket } from "../../services/socket.service";
 import { useProctorMonitor } from "../../hooks/useProctorMonitor";
 import { WebcamMonitor } from "../../components/exam/WebcamMonitor";
 import { ScreenMonitor } from "../../components/exam/ScreenMonitor";
@@ -18,6 +19,7 @@ export const ExamInterfacePage: React.FC = () => {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraWarning, setCameraWarning] = useState<string | null>(null);
+  const [examinerWarning, setExaminerWarning] = useState<{ message: string; sentBy: string } | null>(null);
 
   const navigate = useNavigate();
   const timerRef = useRef<any>(null);
@@ -60,6 +62,26 @@ export const ExamInterfacePage: React.FC = () => {
 
     fetchAttempt();
   }, [id, navigate]);
+
+  // Real-Time Socket Connection for Proctor Warnings
+  useEffect(() => {
+    if (!id || !attempt || attempt.status !== "IN_PROGRESS") return;
+
+    const socket = getSocket();
+    socket.emit("join:attempt", id);
+
+    socket.on("candidate:warning", (data: any) => {
+      setExaminerWarning({
+        message: data.warningMessage,
+        sentBy: data.sentBy || "Human Examiner"
+      });
+    });
+
+    return () => {
+      socket.emit("leave:attempt", id);
+      socket.off("candidate:warning");
+    };
+  }, [id, attempt?.status]);
 
   // Countdown timer effect
   useEffect(() => {
@@ -389,6 +411,41 @@ export const ExamInterfacePage: React.FC = () => {
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition disabled:opacity-50"
               >
                 {submitting ? "Finalizing..." : "Yes, Submit Exam"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Examiner Direct Live Warning Modal */}
+      {examinerWarning && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-rose-950/95 border-2 border-rose-500 rounded-2xl p-6 text-white shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-rose-600 rounded-full animate-bounce">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">OFFICIAL PROCTOR INSTRUCTION</h3>
+                <p className="text-xs text-rose-200">Issued by {examinerWarning.sentBy}</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-black/40 border border-rose-800 text-sm font-medium text-rose-100">
+              "{examinerWarning.message}"
+            </div>
+
+            <p className="text-xs text-rose-300">
+              Please comply with this proctor instruction immediately. All actions continue to be logged in your examination audit record.
+            </p>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setExaminerWarning(null)}
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-xs text-white shadow-lg transition"
+              >
+                I Acknowledge & Return to Exam
               </button>
             </div>
           </div>
