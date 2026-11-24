@@ -95,6 +95,8 @@ export interface ExamAttempt {
   status: AttemptStatus;
   totalScore?: number | null;
   remainingSeconds?: number;
+  isFrozen?: boolean;
+  frozenReason?: string | null;
   exam: Exam;
   answers: Answer[];
   candidate?: User;

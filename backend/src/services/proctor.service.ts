@@ -1,7 +1,13 @@
 import { prisma } from "../config/database";
 import { IngestEventsInput, SingleProctorEvent } from "../validators/proctor.validator";
 import { AttemptStatus, EventSeverity, UserRole, RiskLevel } from "@prisma/client";
-import { broadcastExamAlert } from "../socket";
+import {
+  broadcastExamAlert,
+  broadcastCandidateWarning,
+  broadcastSessionFrozen,
+  broadcastSessionResumed,
+  broadcastForceSubmitted
+} from "../socket";
 import { storageService } from "./storage.service";
 import fs from "fs";
 import path from "path";
@@ -429,4 +435,228 @@ export async function getAttemptAnomalyScore(attemptId: string) {
     where: { attemptId },
     orderBy: { createdAt: "desc" }
   });
+}
+
+export async function issueExaminerWarning(attemptId: string, examinerId: string, warningMessage: string) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    include: { candidate: true, exam: true }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  const examiner = await prisma.user.findUnique({
+    where: { id: examinerId },
+    select: { fullName: true, role: true }
+  });
+  const examinerName = examiner?.fullName || "Exam Proctor";
+
+  // Persist official warning event in audit log
+  const event = await prisma.proctorEvent.create({
+    data: {
+      attemptId,
+      eventType: "EXAMINER_DIRECT_WARNING",
+      severity: EventSeverity.HIGH,
+      metadata: {
+        warningMessage,
+        examinerId,
+        examinerName,
+        issuedAt: new Date().toISOString()
+      }
+    }
+  });
+
+  // Real-time broadcast to candidate & examiner room
+  broadcastCandidateWarning(attemptId, attempt.examId, {
+    attemptId,
+    warningMessage,
+    sentBy: examinerName,
+    timestamp: new Date().toISOString()
+  });
+
+  return { success: true, event };
+}
+
+export async function freezeAttempt(attemptId: string, examinerId: string, reason?: string) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    include: { candidate: true, exam: true }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+    throw new Error("Cannot freeze an exam attempt that is not currently in progress");
+  }
+
+  const examiner = await prisma.user.findUnique({
+    where: { id: examinerId },
+    select: { fullName: true }
+  });
+  const examinerName = examiner?.fullName || "Exam Proctor";
+  const freezeReason = reason?.trim() || "Exam paused by proctor for integrity compliance check.";
+
+  // Update attempt state to frozen
+  const updated = await prisma.examAttempt.update({
+    where: { id: attemptId },
+    data: {
+      isFrozen: true,
+      frozenReason: freezeReason
+    }
+  });
+
+  // Log critical audit event
+  await prisma.proctorEvent.create({
+    data: {
+      attemptId,
+      eventType: "EXAM_SESSION_FROZEN",
+      severity: EventSeverity.CRITICAL,
+      metadata: {
+        reason: freezeReason,
+        examinerId,
+        examinerName,
+        frozenAt: new Date().toISOString()
+      }
+    }
+  });
+
+  // Real-time broadcast
+  broadcastSessionFrozen(attemptId, attempt.examId, {
+    attemptId,
+    reason: freezeReason,
+    sentBy: examinerName,
+    timestamp: new Date().toISOString()
+  });
+
+  return updated;
+}
+
+export async function unfreezeAttempt(attemptId: string, examinerId: string) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    include: { candidate: true, exam: true }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  const examiner = await prisma.user.findUnique({
+    where: { id: examinerId },
+    select: { fullName: true }
+  });
+  const examinerName = examiner?.fullName || "Exam Proctor";
+
+  // Update attempt state to unfrozen
+  const updated = await prisma.examAttempt.update({
+    where: { id: attemptId },
+    data: {
+      isFrozen: false,
+      frozenReason: null
+    }
+  });
+
+  // Log audit event
+  await prisma.proctorEvent.create({
+    data: {
+      attemptId,
+      eventType: "EXAM_SESSION_RESUMED",
+      severity: EventSeverity.INFO,
+      metadata: {
+        examinerId,
+        examinerName,
+        resumedAt: new Date().toISOString()
+      }
+    }
+  });
+
+  // Real-time broadcast
+  broadcastSessionResumed(attemptId, attempt.examId, {
+    attemptId,
+    sentBy: examinerName,
+    timestamp: new Date().toISOString()
+  });
+
+  return updated;
+}
+
+export async function forceSubmitAttempt(
+  attemptId: string,
+  examinerId: string,
+  reason: string,
+  disqualify: boolean = false
+) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    include: { candidate: true, exam: true }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+    throw new Error("Cannot force-submit an attempt that is already closed");
+  }
+
+  const examiner = await prisma.user.findUnique({
+    where: { id: examinerId },
+    select: { fullName: true }
+  });
+  const examinerName = examiner?.fullName || "Exam Proctor";
+  const terminationReason = reason?.trim() || "Exam terminated remotely by human proctor.";
+
+  // Update attempt status
+  const updated = await prisma.examAttempt.update({
+    where: { id: attemptId },
+    data: {
+      status: AttemptStatus.AUTO_SUBMITTED,
+      submittedAt: new Date(),
+      isFrozen: false,
+      totalScore: disqualify ? 0 : attempt.totalScore
+    }
+  });
+
+  // If disqualified, record formal ReviewRecord
+  if (disqualify) {
+    await prisma.reviewRecord.create({
+      data: {
+        attemptId,
+        reviewerId: examinerId,
+        decision: "DISQUALIFIED",
+        notes: `Remotely disqualified by proctor: ${terminationReason}`
+      }
+    });
+  }
+
+  // Log audit event
+  await prisma.proctorEvent.create({
+    data: {
+      attemptId,
+      eventType: disqualify ? "EXAM_DISQUALIFIED" : "EXAM_FORCE_TERMINATED",
+      severity: EventSeverity.CRITICAL,
+      metadata: {
+        reason: terminationReason,
+        disqualified: disqualify,
+        examinerId,
+        examinerName,
+        terminatedAt: new Date().toISOString()
+      }
+    }
+  });
+
+  // Real-time broadcast
+  broadcastForceSubmitted(attemptId, attempt.examId, {
+    attemptId,
+    reason: terminationReason,
+    disqualified: disqualify,
+    sentBy: examinerName,
+    timestamp: new Date().toISOString()
+  });
+
+  return updated;
 }

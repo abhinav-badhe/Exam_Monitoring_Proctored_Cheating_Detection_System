@@ -22,9 +22,38 @@ export const ExamInterfacePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [cameraWarning, setCameraWarning] = useState<string | null>(null);
   const [examinerWarning, setExaminerWarning] = useState<{ message: string; sentBy: string } | null>(null);
+  const [isFrozen, setIsFrozen] = useState(false);
+  const [frozenReason, setFrozenReason] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const timerRef = useRef<any>(null);
+
+  const playProctorChime = (type: "warning" | "resume") => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      if (type === "warning") {
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+      } else {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(659.25, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      }
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + (type === "warning" ? 0.35 : 0.3));
+    } catch {
+      // Audio context might be restricted
+    }
+  };
 
   // Module 2 & 4: Active Browser & Screen Proctor Monitoring
   const {
@@ -61,6 +90,10 @@ export const ExamInterfacePage: React.FC = () => {
         // Set countdown
         setTimeLeft(data.remainingSeconds || data.exam.durationMinutes * 60);
 
+        // Populate initial frozen state
+        setIsFrozen(!!data.isFrozen);
+        setFrozenReason(data.frozenReason || null);
+
         // If already submitted, redirect to result
         if (data.status === "SUBMITTED" || data.status === "AUTO_SUBMITTED" || data.status === "EVALUATED") {
           navigate(`/candidate/results/${id}`, { replace: true });
@@ -73,7 +106,7 @@ export const ExamInterfacePage: React.FC = () => {
     fetchAttempt();
   }, [id, navigate]);
 
-  // Real-Time Socket Connection for Proctor Warnings
+  // Real-Time Socket Connection for Proctor Warnings & Interventions
   useEffect(() => {
     if (!id || !attempt || attempt.status !== "IN_PROGRESS") return;
 
@@ -81,15 +114,39 @@ export const ExamInterfacePage: React.FC = () => {
     socket.emit("join:attempt", id);
 
     socket.on("candidate:warning", (data: any) => {
+      playProctorChime("warning");
       setExaminerWarning({
         message: data.warningMessage,
         sentBy: data.sentBy || "Human Examiner"
       });
     });
 
+    socket.on("candidate:session_frozen", (data: any) => {
+      playProctorChime("warning");
+      setIsFrozen(true);
+      setFrozenReason(data.reason || "Exam session paused by proctor for integrity check.");
+    });
+
+    socket.on("candidate:session_resumed", () => {
+      playProctorChime("resume");
+      setIsFrozen(false);
+      setFrozenReason(null);
+    });
+
+    socket.on("candidate:force_submitted", (data: any) => {
+      playProctorChime("warning");
+      navigate(`/candidate/results/${id}`, {
+        replace: true,
+        state: { forced: true, reason: data.reason, disqualified: data.disqualified }
+      });
+    });
+
     return () => {
       socket.emit("leave:attempt", id);
       socket.off("candidate:warning");
+      socket.off("candidate:session_frozen");
+      socket.off("candidate:session_resumed");
+      socket.off("candidate:force_submitted");
     };
   }, [id, attempt?.status]);
 
@@ -99,7 +156,7 @@ export const ExamInterfacePage: React.FC = () => {
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
-        if (extensionBlockMessage) return prev; // Pause countdown while examination is blocked by active extension
+        if (extensionBlockMessage || isFrozen) return prev; // Pause countdown while examination is blocked by active extension or frozen by proctor
         if (prev === null || prev <= 1) {
           clearInterval(timerRef.current);
           handleAutoSubmit();
@@ -126,7 +183,7 @@ export const ExamInterfacePage: React.FC = () => {
   };
 
   const handleOptionSelect = async (questionId: string, optionId: string) => {
-    if (!id || submitting) return;
+    if (!id || submitting || isFrozen) return;
 
     setSelectedAnswers((prev) => ({ ...prev, [questionId]: optionId }));
     setSavingStatus("saving");
@@ -144,7 +201,7 @@ export const ExamInterfacePage: React.FC = () => {
   };
 
   const handleSubmitExam = async () => {
-    if (!id || submitting) return;
+    if (!id || submitting || isFrozen) return;
     setSubmitting(true);
     try {
       await attemptService.submitAttempt(id);
@@ -513,6 +570,39 @@ export const ExamInterfacePage: React.FC = () => {
               >
                 I Acknowledge & Return to Exam
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Examiner Remote Freeze Modal Overlay */}
+      {isFrozen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-xl bg-slate-900 border-2 border-amber-500 rounded-3xl p-8 text-white shadow-2xl space-y-6 text-center">
+            <div className="w-20 h-20 bg-amber-500/20 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto text-amber-400 animate-pulse">
+              <ShieldAlert className="w-10 h-10" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                Examination Session Paused
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight">SESSION FROZEN BY PROCTOR</h2>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-black/50 border border-slate-700 text-sm font-medium text-amber-100 text-left">
+              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">Reason Stated by Proctor:</p>
+              <p className="text-sm text-slate-200 leading-relaxed italic">"{frozenReason || "Exam temporarily paused by proctor for integrity review."}"</p>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+              Your exam timer and inputs have been halted. Do not close or refresh this tab. Your video and audio feeds remain actively recorded for verification.
+            </p>
+
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>Awaiting proctor signal to unfreeze and resume...</span>
             </div>
           </div>
         </div>

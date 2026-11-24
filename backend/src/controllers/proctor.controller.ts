@@ -85,3 +85,64 @@ export async function purgeRetentionData(req: Request, res: Response) {
     return sendError(res, error.message || "Failed to execute compliance purge", 500);
   }
 }
+
+export async function warnCandidate(req: Request, res: Response) {
+  try {
+    const { warningMessage } = req.body;
+    if (!warningMessage || !warningMessage.trim()) {
+      return sendError(res, "Warning message is required", 400);
+    }
+    const result = await proctorService.issueExaminerWarning(
+      req.params.attemptId as string,
+      req.user!.userId,
+      warningMessage.trim()
+    );
+    return sendSuccess(res, result, "Direct warning dispatched to candidate", 200);
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to dispatch warning", 400);
+  }
+}
+
+export async function freezeAttempt(req: Request, res: Response) {
+  try {
+    const { reason } = req.body;
+    const result = await proctorService.freezeAttempt(
+      req.params.attemptId as string,
+      req.user!.userId,
+      reason
+    );
+    return sendSuccess(res, result, "Examination attempt successfully frozen", 200);
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to freeze exam attempt", 400);
+  }
+}
+
+export async function unfreezeAttempt(req: Request, res: Response) {
+  try {
+    const result = await proctorService.unfreezeAttempt(
+      req.params.attemptId as string,
+      req.user!.userId
+    );
+    return sendSuccess(res, result, "Examination attempt successfully resumed", 200);
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to resume exam attempt", 400);
+  }
+}
+
+export async function forceSubmitAttempt(req: Request, res: Response) {
+  try {
+    const { reason, disqualify } = req.body;
+    if (!reason || !reason.trim()) {
+      return sendError(res, "Reason for force termination is required", 400);
+    }
+    const result = await proctorService.forceSubmitAttempt(
+      req.params.attemptId as string,
+      req.user!.userId,
+      reason.trim(),
+      !!disqualify
+    );
+    return sendSuccess(res, result, "Examination attempt terminated by proctor", 200);
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to force-submit exam attempt", 400);
+  }
+}

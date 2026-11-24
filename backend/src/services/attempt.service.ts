@@ -117,6 +117,10 @@ export async function saveAnswer(attemptId: string, candidateId: string, data: S
     throw new Error("Cannot save answer: Exam attempt is already submitted or closed");
   }
 
+  if (attempt.isFrozen) {
+    throw new Error("Cannot save answer: Examination attempt is currently frozen by proctor");
+  }
+
   return prisma.answer.upsert({
     where: {
       attemptId_questionId: {
@@ -164,6 +168,10 @@ export async function submitAttempt(attemptId: string, candidateId: string) {
 
   if (attempt.status !== AttemptStatus.IN_PROGRESS) {
     throw new Error("Attempt is already submitted");
+  }
+
+  if (attempt.isFrozen) {
+    throw new Error("Cannot submit: Examination attempt is currently frozen by proctor");
   }
 
   return calculateAndFinalizeScore(attempt, AttemptStatus.SUBMITTED);

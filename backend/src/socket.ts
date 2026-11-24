@@ -75,18 +75,45 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("examiner:warn_candidate", (payload: { attemptId: string; examId: string; warningMessage: string }) => {
       if (!payload.attemptId || !payload.warningMessage) return;
 
-      // Broadcast warning directly to the candidate's attempt room
-      io?.to(`attempt:${payload.attemptId}`).emit("candidate:warning", {
+      broadcastCandidateWarning(payload.attemptId, payload.examId, {
         attemptId: payload.attemptId,
         warningMessage: payload.warningMessage,
         sentBy: user?.fullName || "Exam Proctor",
         timestamp: new Date().toISOString()
       });
+    });
 
-      // Also echo to the exam room so other examiners see the warning was issued
-      io?.to(`exam:${payload.examId}`).emit("exam:warning_issued", {
+    // Examiner freezes candidate session
+    socket.on("examiner:freeze_attempt", (payload: { attemptId: string; examId: string; reason?: string }) => {
+      if (!payload.attemptId) return;
+
+      broadcastSessionFrozen(payload.attemptId, payload.examId, {
         attemptId: payload.attemptId,
-        warningMessage: payload.warningMessage,
+        reason: payload.reason || "Exam session paused by proctor for integrity check.",
+        sentBy: user?.fullName || "Exam Proctor",
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Examiner resumes/unfreezes candidate session
+    socket.on("examiner:unfreeze_attempt", (payload: { attemptId: string; examId: string }) => {
+      if (!payload.attemptId) return;
+
+      broadcastSessionResumed(payload.attemptId, payload.examId, {
+        attemptId: payload.attemptId,
+        sentBy: user?.fullName || "Exam Proctor",
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Examiner force submits candidate session
+    socket.on("examiner:force_submit", (payload: { attemptId: string; examId: string; reason: string; disqualified?: boolean }) => {
+      if (!payload.attemptId) return;
+
+      broadcastForceSubmitted(payload.attemptId, payload.examId, {
+        attemptId: payload.attemptId,
+        reason: payload.reason,
+        disqualified: !!payload.disqualified,
         sentBy: user?.fullName || "Exam Proctor",
         timestamp: new Date().toISOString()
       });
@@ -115,4 +142,43 @@ export function broadcastExamAlert(examId: string, alertData: any) {
 export function broadcastCandidateStatus(examId: string, statusData: any) {
   if (!io) return;
   io.to(`exam:${examId}`).emit("exam:candidate_status", statusData);
+}
+
+export function broadcastCandidateWarning(attemptId: string, examId: string, payload: any) {
+  if (!io) return;
+  io.to(`attempt:${attemptId}`).emit("candidate:warning", payload);
+  io.to(`exam:${examId}`).emit("exam:warning_issued", payload);
+}
+
+export function broadcastSessionFrozen(attemptId: string, examId: string, payload: any) {
+  if (!io) return;
+  io.to(`attempt:${attemptId}`).emit("candidate:session_frozen", payload);
+  io.to(`exam:${examId}`).emit("exam:candidate_status", {
+    attemptId,
+    isFrozen: true,
+    frozenReason: payload.reason,
+    timestamp: payload.timestamp || new Date().toISOString()
+  });
+}
+
+export function broadcastSessionResumed(attemptId: string, examId: string, payload: any) {
+  if (!io) return;
+  io.to(`attempt:${attemptId}`).emit("candidate:session_resumed", payload);
+  io.to(`exam:${examId}`).emit("exam:candidate_status", {
+    attemptId,
+    isFrozen: false,
+    timestamp: payload.timestamp || new Date().toISOString()
+  });
+}
+
+export function broadcastForceSubmitted(attemptId: string, examId: string, payload: any) {
+  if (!io) return;
+  io.to(`attempt:${attemptId}`).emit("candidate:force_submitted", payload);
+  io.to(`exam:${examId}`).emit("exam:candidate_status", {
+    attemptId,
+    status: "AUTO_SUBMITTED",
+    disqualified: payload.disqualified,
+    reason: payload.reason,
+    timestamp: payload.timestamp || new Date().toISOString()
+  });
 }

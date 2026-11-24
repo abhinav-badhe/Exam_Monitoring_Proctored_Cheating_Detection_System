@@ -268,8 +268,57 @@ async function runFullEndpointAudit() {
   const anomalyRes = await request("POST", `/proctor/attempts/${attemptId}/evaluate-anomaly`, {}, examinerToken);
   record("POST", `/api/proctor/attempts/:attemptId/evaluate-anomaly`, 200, anomalyRes.status, `Evaluated anomaly score: ${anomalyRes.data.data.score}`);
 
-  // 5. Exam Submission, Grading & Review Endpoints
-  console.log("\n--- SECTION 5: Submission, Grading, Examiner Reviews & GDPR Retention ---");
+  // 5. Examiner Live Interventions (Warning, Session Freeze & Force Submit)
+  console.log("\n--- SECTION 5: Examiner Live Interventions & Remote Session Controls ---");
+  // Dispatch direct warning
+  const warnRes = await request("POST", `/proctor/attempts/${attemptId}/warn`, {
+    warningMessage: "Audit test: Please keep your attention focused on the exam interface."
+  }, examinerToken);
+  record("POST", `/api/proctor/attempts/:id/warn`, 200, warnRes.status, "Examiner direct live warning dispatched");
+
+  // Remote Freeze Attempt
+  const freezeRes = await request("POST", `/proctor/attempts/${attemptId}/freeze`, {
+    reason: "Audit test: Temporary integrity freeze."
+  }, examinerToken);
+  record("POST", `/api/proctor/attempts/:id/freeze`, 200, freezeRes.status, "Examination attempt remotely frozen by examiner");
+
+  // Candidate attempt to save answer while frozen (should be blocked)
+  const answerWhileFrozenRes = await request("POST", `/attempts/${attemptId}/answers`, {
+    questionId,
+    selectedOptionId: correctOptionId
+  }, candidateToken);
+  record("POST", `/api/attempts/:id/answers (Frozen Guard)`, 400, answerWhileFrozenRes.status, "Blocked answer modification while attempt is frozen");
+
+  // Remote Unfreeze Attempt
+  const unfreezeRes = await request("POST", `/proctor/attempts/${attemptId}/unfreeze`, {}, examinerToken);
+  record("POST", `/api/proctor/attempts/:id/unfreeze`, 200, unfreezeRes.status, "Examination attempt successfully resumed/unfrozen");
+
+  // Candidate resumes and saves answer
+  const answerResumedRes = await request("POST", `/attempts/${attemptId}/answers`, {
+    questionId,
+    selectedOptionId: correctOptionId
+  }, candidateToken);
+  record("POST", `/api/attempts/:id/answers (Resumed)`, 200, answerResumedRes.status, "Answer saved after session unfreezing");
+
+  // Secondary candidate attempt for Force-Submit & Disqualification testing
+  const rogueEmail = `audit_rogue_${Date.now()}@proctorai.local`;
+  const rogueReg = await request("POST", "/auth/register", {
+    fullName: "Rogue Candidate",
+    email: rogueEmail,
+    password: "Password123!"
+  });
+  const rogueToken = rogueReg.data.data.token;
+  const rogueAttRes = await request("POST", "/attempts", { examId }, rogueToken);
+  const rogueAttemptId = rogueAttRes.data.data.id;
+
+  const forceSubmitRes = await request("POST", `/proctor/attempts/${rogueAttemptId}/force-submit`, {
+    reason: "Gross misconduct: Contraband phone detected during audit.",
+    disqualify: true
+  }, examinerToken);
+  record("POST", `/api/proctor/attempts/:id/force-submit`, 200, forceSubmitRes.status, "Examiner force-terminated & disqualified candidate attempt");
+
+  // 6. Exam Submission, Grading & Review Endpoints
+  console.log("\n--- SECTION 6: Submission, Grading, Examiner Reviews & GDPR Retention ---");
   // Submit Exam
   const submitRes = await request("POST", `/attempts/${attemptId}/submit`, {}, candidateToken);
   record("POST", `/api/attempts/:id/submit`, 200, submitRes.status, `Submitted! Auto-grade: ${submitRes.data.data.totalScore}/10 marks`);
@@ -301,10 +350,10 @@ async function runFullEndpointAudit() {
   const purgeRes = await request("POST", "/proctor/maintenance/purge-expired?days=365", {}, adminToken);
   record("POST", `/api/proctor/maintenance/purge-expired`, 200, purgeRes.status, `Executed GDPR/FERPA retention purge`);
 
-  // 6. Python AI Microservice Health & Endpoints
-  console.log("\n--- SECTION 6: Python AI Microservice Endpoints ---");
+  // 7. Python AI Microservice Health & Endpoints
+  console.log("\n--- SECTION 7: Python AI Microservice Endpoints ---");
   const pyHealth = await fetch(`${AI_URL}/health`);
-  const pyHealthData = await pyHealth.json();
+  const pyHealthData: any = await pyHealth.json();
   console.log(` ✅ [GET   ] ${AI_URL}/health -> ${pyHealth.status} (PASS) | Python microservice: ${pyHealthData.status}`);
 
   console.log("\n==========================================================================================");
@@ -321,4 +370,4 @@ runFullEndpointAudit()
     await prisma.$disconnect();
   });
 
-export {};
+export { };

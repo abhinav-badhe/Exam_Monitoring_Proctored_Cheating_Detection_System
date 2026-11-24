@@ -94,5 +94,25 @@ export const proctorService = {
   async evaluateAttemptAnomaly(attemptId: string): Promise<any> {
     const res = await api.post(`/proctor/attempts/${attemptId}/evaluate-anomaly`);
     return res.data.data;
+  },
+
+  async warnCandidate(attemptId: string, warningMessage: string) {
+    const res = await api.post(`/proctor/attempts/${attemptId}/warn`, { warningMessage });
+    return res.data.data;
+  },
+
+  async freezeAttempt(attemptId: string, reason?: string) {
+    const res = await api.post(`/proctor/attempts/${attemptId}/freeze`, { reason });
+    return res.data.data;
+  },
+
+  async unfreezeAttempt(attemptId: string) {
+    const res = await api.post(`/proctor/attempts/${attemptId}/unfreeze`);
+    return res.data.data;
+  },
+
+  async forceSubmitAttempt(attemptId: string, reason: string, disqualify: boolean = false) {
+    const res = await api.post(`/proctor/attempts/${attemptId}/force-submit`, { reason, disqualify });
+    return res.data.data;
   }
 };

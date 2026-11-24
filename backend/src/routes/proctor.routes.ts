@@ -54,6 +54,35 @@ router.post(
   proctorController.evaluateAnomaly
 );
 
+// Examiner & Admin Live Intervention Endpoints
+router.post(
+  "/attempts/:attemptId/warn",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  proctorController.warnCandidate
+);
+
+router.post(
+  "/attempts/:attemptId/freeze",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  proctorController.freezeAttempt
+);
+
+router.post(
+  "/attempts/:attemptId/unfreeze",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  proctorController.unfreezeAttempt
+);
+
+router.post(
+  "/attempts/:attemptId/force-submit",
+  authenticate,
+  authorize([UserRole.EXAMINER, UserRole.ADMIN]),
+  proctorController.forceSubmitAttempt
+);
+
 // Admin-only FERPA/GDPR compliance data retention purge
 router.post(
   "/maintenance/purge-expired",

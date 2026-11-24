@@ -111,6 +111,8 @@ model ExamAttempt {
   submittedAt DateTime?
   status      AttemptStatus @default(IN_PROGRESS)
   totalScore  Float?
+  isFrozen    Boolean       @default(false)
+  frozenReason String?
 
   exam      Exam           @relation(fields: [examId], references: [id])
   candidate User           @relation(fields: [candidateId], references: [id])

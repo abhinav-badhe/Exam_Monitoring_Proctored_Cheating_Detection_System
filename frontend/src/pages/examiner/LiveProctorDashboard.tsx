@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { examService } from "../../services/exam.service";
 import { attemptService } from "../../services/attempt.service";
+import { proctorService } from "../../services/proctor.service";
 import { getSocket } from "../../services/socket.service";
 import { Exam, ExamAttempt } from "../../types";
 
@@ -31,6 +32,19 @@ export const LiveProctorDashboard: React.FC = () => {
   const [warningMessage, setWarningMessage] = useState("");
   const [warningSuccess, setWarningSuccess] = useState("");
 
+  // Remote Freeze Modal state
+  const [freezeModalCandidate, setFreezeModalCandidate] = useState<{ attemptId: string; name: string } | null>(null);
+  const [freezeReason, setFreezeReason] = useState("Integrity verification in progress. Please look directly at the screen.");
+
+  // Force Submit / Disqualify Modal state
+  const [forceSubmitModalCandidate, setForceSubmitModalCandidate] = useState<{ attemptId: string; name: string } | null>(null);
+  const [forceSubmitReason, setForceSubmitReason] = useState("Multiple severe proctoring violations detected.");
+  const [forceSubmitDisqualify, setForceSubmitDisqualify] = useState(true);
+
+  // General action status banner
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+
   // Review Verdict Modal state
   const [reviewModalAttempt, setReviewModalAttempt] = useState<ExamAttempt | null>(null);
   const [reviewDecision, setReviewDecision] = useState<"CLEARED" | "FLAGGED_FOR_INQUIRY" | "DISQUALIFIED">("FLAGGED_FOR_INQUIRY");
@@ -44,6 +58,8 @@ export const LiveProctorDashboard: React.FC = () => {
     faceStatus: "NORMAL" | "LOOKING_AWAY" | "NO_FACE" | "MULTI_FACE";
     phoneDetected: boolean;
     externalToolDetected: boolean;
+    isFrozen?: boolean;
+    frozenReason?: string | null;
   }>>({});
 
   const alertFeedEndRef = useRef<HTMLDivElement>(null);
@@ -87,7 +103,9 @@ export const LiveProctorDashboard: React.FC = () => {
           isFocused: true,
           faceStatus: "NORMAL",
           phoneDetected: false,
-          externalToolDetected: false
+          externalToolDetected: false,
+          isFrozen: !!att.isFrozen,
+          frozenReason: att.frozenReason || null
         };
       }
       setCandidateStates(initialStates);
@@ -166,28 +184,162 @@ export const LiveProctorDashboard: React.FC = () => {
       });
     });
 
+    // Listen for candidate status updates (freeze, resume, submission)
+    socket.on("exam:candidate_status", (data: any) => {
+      if (!data.attemptId) return;
+
+      setCandidateStates((prev) => {
+        const current = prev[data.attemptId] || {
+          isFocused: true,
+          faceStatus: "NORMAL",
+          phoneDetected: false,
+          externalToolDetected: false
+        };
+        return {
+          ...prev,
+          [data.attemptId]: {
+            ...current,
+            isFrozen: data.isFrozen !== undefined ? data.isFrozen : current.isFrozen,
+            frozenReason: data.frozenReason !== undefined ? data.frozenReason : current.frozenReason
+          }
+        };
+      });
+
+      if (data.status) {
+        setAttempts((prev) =>
+          prev.map((att) =>
+            att.id === data.attemptId ? { ...att, status: data.status, isFrozen: false } : att
+          )
+        );
+      }
+    });
+
+    // Listen for warnings issued by any co-examiner
+    socket.on("exam:warning_issued", (data: any) => {
+      const warningAlert: LiveAlert = {
+        id: `warn_${Date.now()}_${Math.random()}`,
+        attemptId: data.attemptId,
+        candidateName: "Candidate",
+        candidateEmail: "",
+        eventType: "EXAMINER_DIRECT_WARNING",
+        severity: "HIGH",
+        description: `Proctor instruction: "${data.warningMessage}"`,
+        timestamp: data.timestamp || new Date().toISOString()
+      };
+      setAlerts((prev) => [warningAlert, ...prev.slice(0, 99)]);
+    });
+
     return () => {
       socket.emit("leave:exam", examId);
       socket.off("exam:proctor_alert");
+      socket.off("exam:candidate_status");
+      socket.off("exam:warning_issued");
     };
   }, [examId]);
 
-  const handleSendWarning = () => {
+  const handleSendWarning = async () => {
     if (!warningModalCandidate || !warningMessage.trim() || !examId) return;
 
-    const socket = getSocket();
-    socket.emit("examiner:warn_candidate", {
-      attemptId: warningModalCandidate.attemptId,
-      examId,
-      warningMessage: warningMessage.trim()
-    });
+    try {
+      setActionLoading(true);
+      await proctorService.warnCandidate(warningModalCandidate.attemptId, warningMessage.trim());
 
-    setWarningSuccess(`Direct warning dispatched to ${warningModalCandidate.name}`);
-    setTimeout(() => {
-      setWarningSuccess("");
-      setWarningModalCandidate(null);
-      setWarningMessage("");
-    }, 1800);
+      setWarningSuccess(`Direct warning dispatched to ${warningModalCandidate.name}`);
+      setTimeout(() => {
+        setWarningSuccess("");
+        setWarningModalCandidate(null);
+        setWarningMessage("");
+      }, 1500);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to dispatch warning");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleFreeze = async (attempt: ExamAttempt) => {
+    const currentState = candidateStates[attempt.id];
+    const isCurrentlyFrozen = currentState?.isFrozen ?? !!attempt.isFrozen;
+
+    if (isCurrentlyFrozen) {
+      // Unfreeze / Resume
+      try {
+        setActionLoading(true);
+        await proctorService.unfreezeAttempt(attempt.id);
+        setCandidateStates((prev) => ({
+          ...prev,
+          [attempt.id]: { ...(prev[attempt.id] || {}), isFrozen: false, frozenReason: null }
+        }));
+        setActionMessage(`Examination resumed for ${attempt.candidate?.fullName || "Candidate"}`);
+        setTimeout(() => setActionMessage(""), 3000);
+      } catch (err: any) {
+        alert(err.response?.data?.message || err.message || "Failed to resume examination");
+      } finally {
+        setActionLoading(false);
+      }
+    } else {
+      // Open modal to specify freeze reason
+      setFreezeModalCandidate({
+        attemptId: attempt.id,
+        name: attempt.candidate?.fullName || "Candidate"
+      });
+      setFreezeReason("Integrity verification in progress. Please look directly at the screen.");
+    }
+  };
+
+  const handleConfirmFreeze = async () => {
+    if (!freezeModalCandidate) return;
+
+    try {
+      setActionLoading(true);
+      await proctorService.freezeAttempt(freezeModalCandidate.attemptId, freezeReason);
+      setCandidateStates((prev) => ({
+        ...prev,
+        [freezeModalCandidate.attemptId]: {
+          ...(prev[freezeModalCandidate.attemptId] || {}),
+          isFrozen: true,
+          frozenReason: freezeReason
+        }
+      }));
+      setFreezeModalCandidate(null);
+      setActionMessage(`Exam session paused and frozen for ${freezeModalCandidate.name}`);
+      setTimeout(() => setActionMessage(""), 3000);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to freeze exam attempt");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmForceSubmit = async () => {
+    if (!forceSubmitModalCandidate || !forceSubmitReason.trim()) return;
+
+    try {
+      setActionLoading(true);
+      await proctorService.forceSubmitAttempt(
+        forceSubmitModalCandidate.attemptId,
+        forceSubmitReason.trim(),
+        forceSubmitDisqualify
+      );
+      setAttempts((prev) =>
+        prev.map((att) =>
+          att.id === forceSubmitModalCandidate.attemptId
+            ? { ...att, status: "AUTO_SUBMITTED", isFrozen: false }
+            : att
+        )
+      );
+      setForceSubmitModalCandidate(null);
+      setActionMessage(
+        `Exam session force-terminated for ${forceSubmitModalCandidate.name} ${
+          forceSubmitDisqualify ? "(DISQUALIFIED)" : ""
+        }`
+      );
+      setTimeout(() => setActionMessage(""), 3000);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || "Failed to terminate exam attempt");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleRecordReview = async () => {
@@ -286,6 +438,18 @@ export const LiveProctorDashboard: React.FC = () => {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 overflow-hidden">
         {/* Candidates Panel (2 Cols) */}
         <div className="lg:col-span-2 flex flex-col space-y-4 overflow-y-auto">
+          {actionMessage && (
+            <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-600 text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+              <span className="flex items-center gap-2">
+                <span>⚡</span>
+                <span>{actionMessage}</span>
+              </span>
+              <button onClick={() => setActionMessage("")} className="text-emerald-400 hover:text-emerald-200 text-xs">
+                ✕
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-slate-200 flex items-center space-x-2">
               <span>👥 Active Candidates</span>
@@ -319,11 +483,16 @@ export const LiveProctorDashboard: React.FC = () => {
                 };
                 const latestScore = att.scores && att.scores[0];
                 const latestReview = att.reviews && att.reviews[0];
+                const isFrozen = state.isFrozen ?? !!att.isFrozen;
 
                 return (
                   <div
                     key={att.id}
-                    className="p-5 rounded-xl border border-slate-800 bg-slate-900/60 hover:border-slate-700 transition flex flex-col justify-between space-y-4"
+                    className={`p-5 rounded-xl border transition flex flex-col justify-between space-y-4 ${
+                      isFrozen
+                        ? "border-amber-500/80 bg-amber-950/25 shadow-lg shadow-amber-950/20"
+                        : "border-slate-800 bg-slate-900/60 hover:border-slate-700"
+                    }`}
                   >
                     {/* Header */}
                     <div>
@@ -337,13 +506,22 @@ export const LiveProctorDashboard: React.FC = () => {
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                             att.status === "IN_PROGRESS"
-                              ? "bg-emerald-950/70 text-emerald-300 border border-emerald-700"
+                              ? isFrozen
+                                ? "bg-amber-950/90 text-amber-300 border border-amber-600 animate-pulse font-bold"
+                                : "bg-emerald-950/70 text-emerald-300 border border-emerald-700"
                               : "bg-slate-800 text-slate-300 border border-slate-700"
                           }`}
                         >
-                          {att.status}
+                          {isFrozen ? "FROZEN" : att.status}
                         </span>
                       </div>
+
+                      {isFrozen && (
+                        <div className="mt-2.5 p-2 rounded-lg bg-amber-500/15 border border-amber-500/35 flex items-center justify-between text-xs text-amber-300 font-bold animate-pulse">
+                          <span>⏸️ EXAM FROZEN BY PROCTOR</span>
+                          <span className="text-[10px] uppercase font-mono tracking-wider">Timer Paused</span>
+                        </div>
+                      )}
 
                       {/* Status Indicators */}
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
@@ -430,7 +608,7 @@ export const LiveProctorDashboard: React.FC = () => {
                     </div>
 
                     {/* Quick Examiner Action Buttons */}
-                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <div className="pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
                       <button
                         onClick={() => {
                           setWarningModalCandidate({
@@ -439,9 +617,36 @@ export const LiveProctorDashboard: React.FC = () => {
                           });
                           setWarningMessage("Please keep your eyes focused on your screen and exam interface.");
                         }}
-                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-950/60 hover:bg-amber-900/70 text-amber-300 border border-amber-700 transition"
+                        className="py-1.5 px-2.5 rounded-lg font-semibold bg-amber-950/60 hover:bg-amber-900/70 text-amber-300 border border-amber-700 transition flex items-center justify-center gap-1.5"
                       >
-                        ⚠️ Issue Warning
+                        ⚠️ Warn
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleFreeze(att)}
+                        disabled={att.status !== "IN_PROGRESS" && !isFrozen}
+                        className={`py-1.5 px-2.5 rounded-lg font-semibold border transition flex items-center justify-center gap-1.5 ${
+                          isFrozen
+                            ? "bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border-emerald-600 animate-pulse font-bold"
+                            : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                        } disabled:opacity-40`}
+                      >
+                        {isFrozen ? "▶️ Resume Exam" : "⏸️ Freeze Exam"}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setForceSubmitModalCandidate({
+                            attemptId: att.id,
+                            name: att.candidate?.fullName || "Candidate"
+                          });
+                          setForceSubmitReason("Multiple severe proctoring violations detected.");
+                          setForceSubmitDisqualify(true);
+                        }}
+                        disabled={att.status !== "IN_PROGRESS"}
+                        className="py-1.5 px-2.5 rounded-lg font-semibold bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-700 transition flex items-center justify-center gap-1.5 disabled:opacity-40"
+                      >
+                        ⛔ Force Submit
                       </button>
 
                       <button
@@ -450,9 +655,9 @@ export const LiveProctorDashboard: React.FC = () => {
                           setReviewDecision("CLEARED");
                           setReviewNotes("");
                         }}
-                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border border-indigo-700 transition"
+                        className="py-1.5 px-2.5 rounded-lg font-semibold bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border border-indigo-700 transition flex items-center justify-center gap-1.5"
                       >
-                        ⚖️ Record Verdict
+                        ⚖️ Verdict
                       </button>
                     </div>
                   </div>
@@ -687,6 +892,151 @@ export const LiveProctorDashboard: React.FC = () => {
                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition disabled:opacity-50"
               >
                 {reviewSubmitting ? "Saving Verdict..." : "Save Review Decision"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Freeze Exam Session Modal */}
+      {freezeModalCandidate && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-amber-600/70 rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <span>⏸️ Freeze Examination Session</span>
+              </h3>
+              <button
+                onClick={() => setFreezeModalCandidate(null)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Immediately pause the examination countdown and freeze question access for{" "}
+              <span className="font-semibold text-white">{freezeModalCandidate.name}</span>.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-slate-400">Quick Reason Presets:</label>
+              <div className="grid grid-cols-1 gap-1.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setFreezeReason("Integrity verification in progress. Please look directly at the screen.")}
+                  className="text-left px-3 py-1.5 rounded bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60 transition"
+                >
+                  🔍 Verification in progress
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreezeReason("Suspicious acoustic or background activity detected.")}
+                  className="text-left px-3 py-1.5 rounded bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60 transition"
+                >
+                  🔊 Background activity check
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreezeReason("Please remove unauthorized secondary devices from your workspace.")}
+                  className="text-left px-3 py-1.5 rounded bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700/60 transition"
+                >
+                  📱 Device removal instruction
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Reason Stated to Candidate:</label>
+              <textarea
+                value={freezeReason}
+                onChange={(e) => setFreezeReason(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                placeholder="Reason explaining why examination is paused..."
+              ></textarea>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setFreezeModalCandidate(null)}
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmFreeze}
+                disabled={actionLoading || !freezeReason.trim()}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition disabled:opacity-50"
+              >
+                {actionLoading ? "Freezing..." : "Confirm & Freeze Session"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Force Submit / Terminate Exam Modal */}
+      {forceSubmitModalCandidate && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border-2 border-rose-600 rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <span>⛔ Force Terminate Examination</span>
+              </h3>
+              <button
+                onClick={() => setForceSubmitModalCandidate(null)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/80 text-xs text-rose-200">
+              ⚠️ <strong>Warning:</strong> This action will immediately terminate the exam session for{" "}
+              <span className="font-bold text-white">{forceSubmitModalCandidate.name}</span>. The candidate will be ejected from the exam interface.
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Termination Reason / Audit Notes:</label>
+              <textarea
+                value={forceSubmitReason}
+                onChange={(e) => setForceSubmitReason(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                placeholder="Detail reason for remote termination..."
+              ></textarea>
+            </div>
+
+            <label className="flex items-center gap-2 p-3 rounded-lg bg-slate-950/80 border border-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={forceSubmitDisqualify}
+                onChange={(e) => setForceSubmitDisqualify(e.target.checked)}
+                className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-xs text-slate-200 font-medium">
+                Formally disqualify candidate (award 0 marks & record review violation)
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setForceSubmitModalCandidate(null)}
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmForceSubmit}
+                disabled={actionLoading || !forceSubmitReason.trim()}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50"
+              >
+                {actionLoading ? "Terminating..." : "Terminate Session Now"}
               </button>
             </div>
           </div>
