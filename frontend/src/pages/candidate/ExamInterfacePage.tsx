@@ -6,7 +6,8 @@ import { useProctorMonitor } from "../../hooks/useProctorMonitor";
 import { WebcamMonitor } from "../../components/exam/WebcamMonitor";
 import { ScreenMonitor } from "../../components/exam/ScreenMonitor";
 import { ExamAttempt, Question } from "../../types";
-import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle } from "lucide-react";
+import { scanForActiveExtensions } from "../../utils/extensionDetector";
+import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle, ShieldAlert, XCircle } from "lucide-react";
 
 export const ExamInterfacePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +26,15 @@ export const ExamInterfacePage: React.FC = () => {
   const timerRef = useRef<any>(null);
 
   // Module 2 & 4: Active Browser & Screen Proctor Monitoring
-  const { isFullscreen, enterFullscreen, activeWarning, loggedEventsCount, logCustomEvent } = useProctorMonitor({
+  const {
+    isFullscreen,
+    enterFullscreen,
+    activeWarning,
+    loggedEventsCount,
+    extensionBlockMessage,
+    clearExtensionBlock,
+    logCustomEvent
+  } = useProctorMonitor({
     attemptId: id || null,
     enabled: !!attempt && attempt.status === "IN_PROGRESS"
   });
@@ -89,6 +98,7 @@ export const ExamInterfacePage: React.FC = () => {
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
+        if (extensionBlockMessage) return prev; // Pause countdown while examination is blocked by active extension
         if (prev === null || prev <= 1) {
           clearInterval(timerRef.current);
           handleAutoSubmit();
@@ -411,6 +421,61 @@ export const ExamInterfacePage: React.FC = () => {
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition disabled:opacity-50"
               >
                 {submitting ? "Finalizing..." : "Yes, Submit Exam"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-Exam Active Browser Extension Blocking Modal */}
+      {extensionBlockMessage && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-rose-950/95 border-2 border-rose-500 rounded-2xl p-6 text-white shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-rose-600 rounded-full animate-bounce">
+                <ShieldAlert className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white uppercase tracking-tight">
+                  EXAMINATION PAUSED: EXTENSION DETECTED
+                </h3>
+                <p className="text-xs text-rose-200">Security Rule Violation</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-black/50 border border-rose-800 rounded-xl text-xs text-rose-100 space-y-1">
+              <p className="font-semibold text-rose-300">Trigger Details:</p>
+              <p className="font-mono text-xs">{extensionBlockMessage}</p>
+            </div>
+
+            <p className="text-xs text-rose-200">
+              Proctored assessment integrity rules strictly forbid running third-party browser extensions or injected assistant tools during the examination.
+            </p>
+
+            <div className="p-3 bg-rose-900/60 rounded-xl text-xs text-rose-100 space-y-1">
+              <p className="font-bold">Instructions to unlock exam:</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-rose-200">
+                <li>Open your browser toolbar or extension settings (<code className="bg-black/40 px-1 py-0.5 rounded font-mono">chrome://extensions</code>).</li>
+                <li>Disable all active extensions, AI sidebars, and assistants.</li>
+                <li>Click <strong>"Verify & Resume Exam"</strong> below.</li>
+              </ol>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const recheck = scanForActiveExtensions();
+                  if (recheck.hasExtensions) {
+                    alert(`Cannot resume: Extension(s) still detected: ${recheck.detectedExtensions.map(e => e.name).join(', ')}. Please disable them first in chrome://extensions.`);
+                  } else {
+                    clearExtensionBlock();
+                    logCustomEvent("EXTENSION_RESOLVED", "INFO", { status: "cleared" }, true);
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-xs text-white shadow-lg transition"
+              >
+                Verify & Resume Exam
               </button>
             </div>
           </div>

@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { examService } from "../../services/exam.service";
 import { attemptService } from "../../services/attempt.service";
 import { Exam } from "../../types";
-import { ArrowLeft, Clock, ShieldCheck, CheckCircle2, AlertTriangle, ArrowRight, AlertCircle } from "lucide-react";
+import { scanForActiveExtensions, ExtensionScanResult } from "../../utils/extensionDetector";
+import { ArrowLeft, Clock, ShieldCheck, CheckCircle2, AlertTriangle, ArrowRight, AlertCircle, RefreshCw, XCircle } from "lucide-react";
 
 export const ExamInstructionsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,11 +13,29 @@ export const ExamInstructionsPage: React.FC = () => {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // System & Extension Readiness Check state
+  const [extensionCheck, setExtensionCheck] = useState<ExtensionScanResult>({
+    hasExtensions: false,
+    detectedExtensions: [],
+    details: []
+  });
+  const [scanning, setScanning] = useState(false);
+
   // Consent checkboxes
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreeMonitoring, setAgreeMonitoring] = useState(false);
 
   const navigate = useNavigate();
+
+  const runExtensionScan = () => {
+    setScanning(true);
+    // Allow slight timeout for any content scripts to settle
+    setTimeout(() => {
+      const result = scanForActiveExtensions();
+      setExtensionCheck(result);
+      setScanning(false);
+    }, 400);
+  };
 
   useEffect(() => {
     const fetchExam = async () => {
@@ -33,9 +52,18 @@ export const ExamInstructionsPage: React.FC = () => {
     };
 
     fetchExam();
+    runExtensionScan();
   }, [id]);
 
   const handleStartExam = async () => {
+    // Re-verify right before launching
+    const recheck = scanForActiveExtensions();
+    if (recheck.hasExtensions) {
+      setExtensionCheck(recheck);
+      setError("Cannot begin examination: One or more active browser extensions were detected. Please disable them to proceed.");
+      return;
+    }
+
     if (!id || !agreeTerms || !agreeMonitoring) return;
     setError(null);
     setStarting(true);
@@ -120,6 +148,75 @@ export const ExamInstructionsPage: React.FC = () => {
           </ul>
         </div>
 
+        {/* Pre-Exam Environment & Browser Extension Audit */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Environment & Extension Pre-Check
+            </h3>
+            <button
+              type="button"
+              onClick={runExtensionScan}
+              disabled={scanning}
+              className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`} />
+              {scanning ? "Scanning..." : "Re-scan Environment"}
+            </button>
+          </div>
+
+          {extensionCheck.hasExtensions ? (
+            <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-900 space-y-3 animate-in fade-in">
+              <div className="flex items-start gap-2.5">
+                <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm text-rose-950">
+                    Active Browser Extension Detected — Action Required
+                  </h4>
+                  <p className="text-xs text-rose-800 mt-0.5">
+                    Proctored assessment rules strictly prohibit all third-party browser extensions, sidebars, and AI assistants. You cannot start the exam until these are disabled.
+                  </p>
+                </div>
+              </div>
+
+              {/* Detected List */}
+              <div className="p-3 bg-white/80 rounded-lg border border-rose-200 space-y-1.5 text-xs">
+                <p className="font-semibold text-rose-950">Detected Extension(s):</p>
+                <ul className="list-disc list-inside space-y-0.5 text-rose-800 font-medium">
+                  {extensionCheck.detectedExtensions.map((ext, idx) => (
+                    <li key={idx}>
+                      <span className="font-bold">{ext.name}</span> ({ext.category}) — <span className="text-slate-500 text-2xs">{ext.signature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Instructions on how to disable */}
+              <div className="p-3 bg-rose-100/60 rounded-lg text-xs text-rose-900 space-y-1">
+                <p className="font-bold">How to resolve:</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-rose-800">
+                  <li>Open your browser extensions settings (e.g. <code className="bg-white px-1 py-0.5 rounded text-rose-900 font-mono">chrome://extensions</code> or <code className="bg-white px-1 py-0.5 rounded text-rose-900 font-mono">edge://extensions</code>).</li>
+                  <li>Toggle off active AI, translation, writing, or assistant extensions.</li>
+                  <li>Alternatively, open this exam URL in an <strong>Incognito / Guest Window</strong> with extensions disabled.</li>
+                  <li>Return to this page and click <strong>"Re-scan Environment"</strong> above.</li>
+                </ol>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">
+                  <strong>Browser Environment Clean:</strong> No active extensions or injected AI tools detected.
+                </span>
+              </div>
+              <span className="text-2xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full uppercase">
+                Verified
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Informed Consent Checkboxes */}
         <div className="space-y-3 pt-2 pb-6 border-b border-slate-100">
           <label className="flex items-start gap-3 cursor-pointer">
@@ -148,13 +245,25 @@ export const ExamInstructionsPage: React.FC = () => {
         </div>
 
         {/* Action Button */}
-        <div className="pt-6 flex justify-end">
+        <div className="pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <p className="text-xs text-slate-500">
+            {extensionCheck.hasExtensions ? (
+              <span className="text-rose-600 font-semibold">
+                ⚠️ You must disable all active extensions before beginning this exam.
+              </span>
+            ) : !agreeTerms || !agreeMonitoring ? (
+              <span>Please review guidelines and check both certifications to proceed.</span>
+            ) : (
+              <span className="text-emerald-600 font-semibold">Environment verified. Ready to begin.</span>
+            )}
+          </p>
+
           <button
             onClick={handleStartExam}
-            disabled={!agreeTerms || !agreeMonitoring || starting}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!agreeTerms || !agreeMonitoring || extensionCheck.hasExtensions || starting}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {starting ? "Launching Environment..." : "Begin Examination"}
+            {starting ? "Launching Environment..." : extensionCheck.hasExtensions ? "Extensions Must Be Disabled" : "Begin Examination"}
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

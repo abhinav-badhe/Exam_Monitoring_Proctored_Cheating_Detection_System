@@ -5,12 +5,14 @@ interface UseProctorMonitorOptions {
   attemptId: string | null;
   enabled?: boolean;
   onWarning?: (message: string) => void;
+  onExtensionBlocked?: (details: string) => void;
 }
 
-export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseProctorMonitorOptions) {
+export function useProctorMonitor({ attemptId, enabled = true, onWarning, onExtensionBlocked }: UseProctorMonitorOptions) {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(!!document.fullscreenElement);
   const [loggedEventsCount, setLoggedEventsCount] = useState<number>(0);
   const [activeWarning, setActiveWarning] = useState<string | null>(null);
+  const [extensionBlockMessage, setExtensionBlockMessage] = useState<string | null>(null);
 
   const eventQueueRef = useRef<ProctorEventPayload[]>([]);
   const isFlushingRef = useRef<boolean>(false);
@@ -205,6 +207,9 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        const blockMsg = `Extension Shortcut [${shortcutName}] Triggered`;
+        setExtensionBlockMessage(blockMsg);
+        if (onExtensionBlocked) onExtensionBlocked(blockMsg);
         triggerWarning(`Security Alert: Extension shortcut [${shortcutName}] detected and blocked.`);
         logEvent(
           "EXTENSION_SHORTCUT_ATTEMPT",
@@ -255,6 +260,9 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
       if (isExtensionElement || isSuspiciousIframe) {
         // Attempt to neutralize injected element
         node.style.display = "none";
+        const blockMsg = `Active Extension Component Detected (${tagName}${node.id ? '#' + node.id : ''})`;
+        setExtensionBlockMessage(blockMsg);
+        if (onExtensionBlocked) onExtensionBlocked(blockMsg);
         triggerWarning("Security Alert: External browser extension assistant detected in page.");
         logEvent(
           "EXTENSION_DOM_INJECTION",
@@ -385,6 +393,8 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
     enterFullscreen,
     loggedEventsCount,
     activeWarning,
+    extensionBlockMessage,
+    clearExtensionBlock: () => setExtensionBlockMessage(null),
     logCustomEvent: logEvent
   };
 }
