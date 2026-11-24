@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EXAMINER
+  CANDIDATE
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  COMPLETED
+  ARCHIVED
+}
+
+enum QuestionType {
+  MCQ
+  DESCRIPTIVE
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+  EVALUATED
+}
+
+enum EventSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(CANDIDATE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  examsCreated Exam[]         @relation("ExamCreator")
+  attempts     ExamAttempt[]
+  reviews      ReviewRecord[]
+}
+
+model Exam {
+  id              String     @id @default(uuid())
+  title           String
+  description     String?
+  durationMinutes Int
+  startTime       DateTime?
+  endTime         DateTime?
+  status          ExamStatus @default(DRAFT)
+  totalMarks      Float      @default(0)
+  createdBy       String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  creator   User          @relation("ExamCreator", fields: [createdBy], references: [id])
+  questions Question[]
+  attempts  ExamAttempt[]
+}
+
+model Question {
+  id           String       @id @default(uuid())
+  examId       String
+  questionText String
+  questionType QuestionType
+  marks        Float        @default(1)
+  orderNumber  Int
+  createdAt    DateTime     @default(now())
+
+  exam    Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  options Option[]
+  answers Answer[]
+}
+
+model Option {
+  id         String  @id @default(uuid())
+  questionId String
+  optionText String
+  isCorrect  Boolean @default(false)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+}
+
+model ExamAttempt {
+  id          String        @id @default(uuid())
+  examId      String
+  candidateId String
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  status      AttemptStatus @default(IN_PROGRESS)
+  totalScore  Float?
+
+  exam      Exam           @relation(fields: [examId], references: [id])
+  candidate User           @relation(fields: [candidateId], references: [id])
+  answers   Answer[]
+  events    ProctorEvent[]
+  scores    AnomalyScore[]
+  evidence  Evidence[]
+  reviews   ReviewRecord[]
+
+  @@unique([examId, candidateId])
+  @@index([candidateId, status])
+}
+
+model Answer {
+  id               String  @id @default(uuid())
+  attemptId        String
+  questionId       String
+  answerText       String?
+  selectedOptionId String?
+  marksAwarded     Float?
+
+  attempt        ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question       Question    @relation(fields: [questionId], references: [id])
+  selectedOption Option?     @relation(fields: [selectedOptionId], references: [id])
+
+  @@unique([attemptId, questionId])
+}
+
+model ProctorEvent {
+  id        String        @id @default(uuid())
+  attemptId String
+  eventType String
+  severity  EventSeverity @default(INFO)
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  attempt  ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  evidence Evidence[]
+
+  @@index([attemptId, createdAt])
+  @@index([eventType])
+}
+
+model Evidence {
+  id        String   @id @default(uuid())
+  attemptId String
+  eventId   String?
+  filePath  String?
+  fileType  String?
+  createdAt DateTime @default(now())
+
+  attempt ExamAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  event   ProctorEvent? @relation(fields: [eventId], references: [id])
+}
+
+model AnomalyScore {
+  id           String    @id @default(uuid())
+  attemptId    String
+  score        Float
+  riskLevel    RiskLevel
+  explanation  Json?
+  modelVersion String?
+  createdAt    DateTime  @default(now())
+
+  attempt ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId, createdAt])
+}
+
+model ReviewRecord {
+  id         String   @id @default(uuid())
+  attemptId  String
+  reviewerId String
+  decision   String
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  attempt  ExamAttempt @relation(fields: [attemptId], references: [id])
+  reviewer User        @relation(fields: [reviewerId], references: [id])
+}

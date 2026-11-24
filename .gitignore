@@ -1,0 +1,44 @@
+# Node dependencies
+node_modules/
+dist/
+build/
+.cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database & Prisma
+*.db
+*.sqlite
+dev.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary & Storage files
+storage/evidence/*
+!storage/evidence/.gitkeep
+storage/models/*
+!storage/models/.gitkeep
+storage/.gitkeep
