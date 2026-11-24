@@ -3,6 +3,7 @@ import cors from "cors";
 import authRoutes from "./routes/auth.routes";
 import examRoutes from "./routes/exam.routes";
 import attemptRoutes from "./routes/attempt.routes";
+import proctorRoutes from "./routes/proctor.routes";
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.get("/api/health", (req: Request, res: Response) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/exams", examRoutes);
 app.use("/api/attempts", attemptRoutes);
+app.use("/api/proctor", proctorRoutes);
 
 // Fallback 404 handler
 app.use((req: Request, res: Response) => {

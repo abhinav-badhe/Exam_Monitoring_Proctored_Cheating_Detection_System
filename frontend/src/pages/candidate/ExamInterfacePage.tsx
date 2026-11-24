@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { attemptService } from "../../services/attempt.service";
+import { useProctorMonitor } from "../../hooks/useProctorMonitor";
 import { ExamAttempt, Question } from "../../types";
-import { Clock, ShieldCheck, CheckCircle2, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle } from "lucide-react";
 
 export const ExamInterfacePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +18,12 @@ export const ExamInterfacePage: React.FC = () => {
 
   const navigate = useNavigate();
   const timerRef = useRef<any>(null);
+
+  // Module 2: Active Browser Proctor Monitoring
+  const { isFullscreen, enterFullscreen, activeWarning, loggedEventsCount } = useProctorMonitor({
+    attemptId: id || null,
+    enabled: !!attempt && attempt.status === "IN_PROGRESS"
+  });
 
   useEffect(() => {
     const fetchAttempt = async () => {
@@ -154,8 +161,19 @@ export const ExamInterfacePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Timer & Finish Button */}
-        <div className="flex items-center gap-4">
+        {/* Live Timer, Fullscreen, & Finish Button */}
+        <div className="flex items-center gap-3">
+          {!isFullscreen && (
+            <button
+              onClick={enterFullscreen}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-xs rounded-lg transition"
+              title="Enter Fullscreen Mode"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              Fullscreen
+            </button>
+          )}
+
           <div
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg border font-mono font-bold text-sm ${
               timeLeft !== null && timeLeft < 300
@@ -175,6 +193,16 @@ export const ExamInterfacePage: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Floating Active Warning Banner */}
+      {activeWarning && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-xl w-full px-4 animate-bounce">
+          <div className="bg-rose-600 text-white p-3.5 rounded-xl shadow-lg border border-rose-700 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            <p className="text-xs font-semibold leading-relaxed">{activeWarning}</p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="m-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg flex items-center gap-2">

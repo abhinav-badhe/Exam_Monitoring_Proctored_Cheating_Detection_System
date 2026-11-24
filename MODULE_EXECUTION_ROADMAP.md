@@ -134,28 +134,38 @@ flowchart TD
 
 ## 📦 Module 2: Browser Activity Monitoring (Phase 2)
 *Goal: Detect client-side browser anomalies: tab switches, window blur, fullscreen exits, copy/paste, and summarize interaction dynamics.*
+*Status: ✅ COMPLETED & VERIFIED (2026-11-24)*
 
 ### 2.1 Client Monitoring Hook & Collectors
-- [ ] `useProctorMonitor` React hook for exam interface
-- [ ] Page visibility listener (`visibilitychange` -> `TAB_HIDDEN` / `TAB_VISIBLE`)
-- [ ] Window focus & blur listener (`blur` -> `WINDOW_BLUR`, `focus` -> `WINDOW_FOCUS`)
-- [ ] Fullscreen change & exit detector (`FULLSCREEN_EXIT`)
-- [ ] Clipboard interception (`copy` -> `COPY_ATTEMPT`, `paste` -> `PASTE_ATTEMPT`)
-- [ ] Context menu / shortcut prevention (`contextmenu`, inspect shortcuts blocked & logged)
+- [x] `useProctorMonitor` React hook for exam interface
+- [x] Page visibility listener (`visibilitychange` -> `TAB_HIDDEN` / `TAB_VISIBLE`)
+- [x] Window focus & blur listener (`blur` -> `WINDOW_BLUR`, `focus` -> `WINDOW_FOCUS`)
+- [x] Fullscreen change & exit detector (`FULLSCREEN_EXIT` / `FULLSCREEN_ENTER`)
+- [x] Clipboard interception (`copy` -> `COPY_ATTEMPT`, `paste` -> `PASTE_ATTEMPT`)
+- [x] Context menu / shortcut prevention (`contextmenu`, inspect shortcuts blocked & logged: `DEVTOOLS_SHORTCUT`)
 
 ### 2.2 Mouse & Keyboard Interaction Summarizer
-- [ ] Throttled mouse movement summarizer (activity bursts vs prolonged inactivity)
-- [ ] Scroll frequency and speed tracker
-- [ ] Keyboard cadence metadata collector (typing bursts, no raw keys or password logging)
+- [x] Throttled mouse movement summarizer (activity bursts vs prolonged inactivity)
+- [x] Scroll frequency and speed tracker
+- [x] Keyboard cadence metadata collector (keyPressCount, no raw keys or password logging)
+- [x] Periodic `INTERACTION_SUMMARY` emission (flushed every 30 seconds)
 
 ### 2.3 Backend Event Ingestion Pipeline
-- [ ] `POST /api/proctor/events` endpoint:
+- [x] `POST /api/proctor/events` endpoint:
   - Validates attempt ownership & active status
-  - Throttled batch event ingestion
+  - Throttled batch event ingestion with Zod validation
   - Stores events in PostgreSQL `proctor_events` table with ISO timestamp & metadata
+- [x] `GET /api/proctor/attempts/:attemptId/events`:
+  - Retrieves chronological audit trail and severity breakdown (INFO, LOW, MEDIUM, HIGH, CRITICAL)
+- [x] Examiner UI Proctoring Telemetry Audit Modal in `ExamResultsPage`
 
 ### 2.4 Module 2 Verification & Sign-Off
-- [ ] Test simulated candidate actions (Alt+Tab, exit fullscreen, copy question, paste text) and verify structured records in database.
+- [x] Live automated test (`backend/src/test-phase2-e2e.ts`) verifying:
+  - Multi-category browser event ingestion (Tab hidden, Blur, Copy, Paste, DevTools shortcut, Interaction summary)
+  - Strict attempt authorization (foreign attempts blocked from injection)
+  - Examiner severity aggregation & event audit trail
+  - Permanent persistence after attempt submission
+  - 100% passed.
 
 ---
 
@@ -284,13 +294,13 @@ flowchart TD
 | :--- | :--- | :---: | :--- |
 | **Module 0** | Monorepo Scaffolding & Git Init | ✅ COMPLETED | 2026-11-24 |
 | **Module 1** | Core Exam Platform (Auth, Exams, Attempts, UI) | ✅ COMPLETED | 2026-11-24 |
-| **Module 2** | Client Browser Activity Monitoring | 🟡 NEXT | Ready to start |
-| **Module 3** | Webcam & Computer Vision (OpenCV/YOLO) | ⏳ PENDING | - |
+| **Module 2** | Client Browser Activity Monitoring | ✅ COMPLETED | 2026-11-24 |
+| **Module 3** | Webcam & Computer Vision (OpenCV/YOLO) | 🟡 NEXT | Ready to start |
 | **Module 4** | Screen Sharing, OCR & AI Indicators | ⏳ PENDING | - |
 | **Module 5** | Behavioural Anomaly Detection Engine | ⏳ PENDING | - |
 | **Module 6** | Real-Time Live Examiner Dashboard | ⏳ PENDING | - |
 | **Module 7** | Full Integration & Security Hardening | ⏳ PENDING | - |
 | **Module 8** | Docker Deployment & Final Docs | ⏳ PENDING | - |
 
-> 🎯 **Current Milestone Completed:** Module 0 & Module 1 are fully built, typed, and verified with an automated end-to-end integration test.
-> 🎯 **Immediate Next Step:** Begin **Module 2: Client Browser Activity Monitoring** (telemetry hooks for `visibilitychange`, window blur/focus, fullscreen exit, clipboard copy/paste interception, and backend event ingestion pipeline).
+> 🎯 **Current Milestones Completed:** Module 0, Module 1, and Module 2 are fully built, typed, and verified with automated end-to-end integration tests.
+> 🎯 **Immediate Next Step:** Begin **Module 3: Webcam & Computer Vision Proctoring** (Python FastAPI AI service setup with OpenCV, MediaPipe for face/head pose tracking, YOLO for phone detection, floating camera stream with consent, and frame analysis pipeline).

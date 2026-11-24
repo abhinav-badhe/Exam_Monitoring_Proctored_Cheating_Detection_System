@@ -1,6 +1,6 @@
 const BASE_URL = "http://localhost:5000/api";
 
-async function postJson(endpoint: string, body: any, token?: string) {
+async function postJson(endpoint: string, body: any, token?: string): Promise<any> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -9,14 +9,14 @@ async function postJson(endpoint: string, body: any, token?: string) {
     headers,
     body: JSON.stringify(body)
   });
-  const data = await res.json();
+  const data: any = await res.json();
   if (!res.ok) {
     throw new Error(`POST ${endpoint} failed (${res.status}): ${JSON.stringify(data)}`);
   }
   return data;
 }
 
-async function getJson(endpoint: string, token?: string) {
+async function getJson(endpoint: string, token?: string): Promise<any> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -24,14 +24,14 @@ async function getJson(endpoint: string, token?: string) {
     method: "GET",
     headers
   });
-  const data = await res.json();
+  const data: any = await res.json();
   if (!res.ok) {
     throw new Error(`GET ${endpoint} failed (${res.status}): ${JSON.stringify(data)}`);
   }
   return data;
 }
 
-async function putJson(endpoint: string, body: any, token?: string) {
+async function putJson(endpoint: string, body: any, token?: string): Promise<any> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -40,7 +40,7 @@ async function putJson(endpoint: string, body: any, token?: string) {
     headers,
     body: JSON.stringify(body)
   });
-  const data = await res.json();
+  const data: any = await res.json();
   if (!res.ok) {
     throw new Error(`PUT ${endpoint} failed (${res.status}): ${JSON.stringify(data)}`);
   }
