@@ -315,10 +315,10 @@ flowchart TD
 | **Module 2** | Client Browser Activity Monitoring | ✅ COMPLETED | 2026-11-24 |
 | **Module 3** | Webcam & Computer Vision (OpenCV/YOLO) | ✅ COMPLETED | 2026-11-24 |
 | **Module 4** | Screen Sharing, OCR & AI Indicators | ✅ COMPLETED | 2026-11-24 |
-| **Module 5** | Behavioural Anomaly Detection Engine | 🟡 NEXT | Ready to start |
-| **Module 6** | Real-Time Live Examiner Dashboard | ⏳ PENDING | - |
-| **Module 7** | Full Integration & Security Hardening | ⏳ PENDING | - |
+| **Module 5** | Behavioural Anomaly Detection Engine | ✅ COMPLETED | 2026-11-24 |
+| **Module 6** | Real-Time Live Examiner Dashboard | ✅ COMPLETED | 2026-11-24 |
+| **Module 7** | Full Integration & Security Hardening | 🟡 NEXT | Ready to start |
 | **Module 8** | Docker Deployment & Final Docs | ⏳ PENDING | - |
 
-> 🎯 **Current Milestones Completed:** Modules 0, 1, 2, 3, and 4 are fully implemented, typed, and verified with automated end-to-end integration tests.
-> 🎯 **Immediate Next Step:** Begin **Module 5: Behavioural Anomaly Detection Engine** (feature aggregation from session events, multi-signal correlation rule engine, Scikit-learn Isolation Forest unsupervised scoring, explainable risk tiering `LOW`/`MEDIUM`/`HIGH`/`CRITICAL`, and DB persistence in `anomaly_scores`).
+> 🎯 **Current Milestones Completed:** Modules 0, 1, 2, 3, 4, 5, and 6 are fully implemented, typed, and verified with automated end-to-end integration tests.
+> 🎯 **Immediate Next Step:** Begin **Module 7: Integration, Testing & Security Hardening** (Rate limiting, Helmet security headers, privacy audit, cross-module unified regression test).
