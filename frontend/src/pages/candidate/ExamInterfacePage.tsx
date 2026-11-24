@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { attemptService } from "../../services/attempt.service";
 import { useProctorMonitor } from "../../hooks/useProctorMonitor";
 import { WebcamMonitor } from "../../components/exam/WebcamMonitor";
+import { ScreenMonitor } from "../../components/exam/ScreenMonitor";
 import { ExamAttempt, Question } from "../../types";
 import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle } from "lucide-react";
 
@@ -21,8 +22,8 @@ export const ExamInterfacePage: React.FC = () => {
   const navigate = useNavigate();
   const timerRef = useRef<any>(null);
 
-  // Module 2: Active Browser Proctor Monitoring
-  const { isFullscreen, enterFullscreen, activeWarning, loggedEventsCount } = useProctorMonitor({
+  // Module 2 & 4: Active Browser & Screen Proctor Monitoring
+  const { isFullscreen, enterFullscreen, activeWarning, loggedEventsCount, logCustomEvent } = useProctorMonitor({
     attemptId: id || null,
     enabled: !!attempt && attempt.status === "IN_PROGRESS"
   });
@@ -165,8 +166,20 @@ export const ExamInterfacePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Timer, Fullscreen, & Finish Button */}
+        {/* Live Timer, Fullscreen, Screen Share, & Finish Button */}
         <div className="flex items-center gap-3">
+          {id && (
+            <ScreenMonitor
+              attemptId={id}
+              enabled={!!attempt && attempt.status === "IN_PROGRESS"}
+              onAnomaly={(msg) => {
+                setCameraWarning(msg);
+                setTimeout(() => setCameraWarning(null), 5000);
+              }}
+              onLogEvent={logCustomEvent}
+            />
+          )}
+
           {!isFullscreen && (
             <button
               onClick={enterFullscreen}

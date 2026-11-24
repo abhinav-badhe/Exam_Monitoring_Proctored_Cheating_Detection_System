@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.cv_routes import router as cv_router
+from app.api.ocr_routes import router as ocr_router
 
 app = FastAPI(
     title="ProctorAI Computer Vision & Anomaly Detection Service",
@@ -26,6 +27,7 @@ def health_check():
     }
 
 app.include_router(cv_router)
+app.include_router(ocr_router)
 
 if __name__ == "__main__":
     import uvicorn

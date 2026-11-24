@@ -64,7 +64,7 @@ async function runPhase3E2E() {
   // 1. Verify Python AI Microservice Health
   console.log("\n[1/6] Verifying Python AI Service Health...");
   const aiHealthRes = await fetch(`${AI_URL}/health`);
-  const aiHealth = await aiHealthRes.json();
+  const aiHealth: any = await aiHealthRes.json();
   console.log("✅ Python AI Service Status:", aiHealth.status, "- CV Pipeline:", aiHealth.cv_pipeline);
 
   // 2. Candidate Registration & Login

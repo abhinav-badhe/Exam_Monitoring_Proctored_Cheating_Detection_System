@@ -31,6 +31,15 @@ router.post(
   proctorController.analyzeFrame
 );
 
+// Candidate uploads screen frame for OCR analysis & external tool indicator detection
+router.post(
+  "/attempts/:attemptId/screen-frame",
+  authenticate,
+  authorize([UserRole.CANDIDATE]),
+  upload.single("frame"),
+  proctorController.analyzeScreenFrame
+);
+
 // Examiner, Admin, or Candidate gets attempt proctor events
 router.get(
   "/attempts/:attemptId/events",

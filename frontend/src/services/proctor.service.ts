@@ -67,5 +67,27 @@ export const proctorService = {
       }
     });
     return res.data.data;
+  },
+
+  async analyzeScreenFrame(attemptId: string, imageBlob: Blob): Promise<{
+    hasIndicators: boolean;
+    detectedTextSnippet: string;
+    anomalies: Array<{
+      eventType: string;
+      severity: string;
+      description: string;
+      confidence: number;
+      metadata?: Record<string, any>;
+    }>;
+  }> {
+    const formData = new FormData();
+    formData.append("frame", imageBlob, "screen.jpg");
+
+    const res = await api.post(`/proctor/attempts/${attemptId}/screen-frame`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data"
+      }
+    });
+    return res.data.data;
   }
 };

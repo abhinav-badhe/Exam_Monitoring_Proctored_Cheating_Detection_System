@@ -4,7 +4,7 @@ import { AttemptStatus, EventSeverity, UserRole } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
 const EVIDENCE_DIR = path.resolve(process.cwd(), "..", "storage", "evidence");
 
 const DEFAULT_SEVERITIES: Record<string, EventSeverity> = {
@@ -185,4 +185,91 @@ export async function analyzeAndLogFrame(
   }
 
   return aiResult;
+}
+
+export async function analyzeAndLogScreenFrame(
+  attemptId: string,
+  candidateId: string,
+  fileBuffer: Buffer,
+  mimeType: string
+) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  if (attempt.candidateId !== candidateId) {
+    throw new Error("Access denied: You do not own this exam attempt");
+  }
+
+  if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+    throw new Error("Cannot process screen frame: Attempt is no longer active");
+  }
+
+  if (!fs.existsSync(EVIDENCE_DIR)) {
+    fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType });
+  formData.append("file", blob, "screen.jpg");
+
+  let ocrResult: any;
+  try {
+    const ocrRes = await fetch(`${AI_SERVICE_URL}/api/ocr/analyze-screen`, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!ocrRes.ok) {
+      const errText = await ocrRes.text();
+      throw new Error(`OCR service error (${ocrRes.status}): ${errText}`);
+    }
+
+    ocrResult = await ocrRes.json();
+  } catch (error: any) {
+    console.warn("Notice: Python OCR microservice unreachable, skipping screen text analysis:", error.message);
+    return {
+      hasIndicators: false,
+      detectedTextSnippet: "",
+      anomalies: []
+    };
+  }
+
+  if (ocrResult.anomalies && ocrResult.anomalies.length > 0) {
+    for (const anom of ocrResult.anomalies) {
+      const severity = (anom.severity as EventSeverity) || EventSeverity.HIGH;
+
+      const event = await prisma.proctorEvent.create({
+        data: {
+          attemptId,
+          eventType: anom.eventType,
+          severity,
+          metadata: {
+            description: anom.description,
+            confidence: anom.confidence,
+            ...(anom.metadata ?? {})
+          }
+        }
+      });
+
+      const filename = `screen_${attemptId}_${Date.now()}.jpg`;
+      const filePath = path.join(EVIDENCE_DIR, filename);
+      fs.writeFileSync(filePath, fileBuffer);
+
+      await prisma.evidence.create({
+        data: {
+          attemptId,
+          eventId: event.id,
+          filePath: path.join("storage", "evidence", filename),
+          fileType: mimeType
+        }
+      });
+    }
+  }
+
+  return ocrResult;
 }
