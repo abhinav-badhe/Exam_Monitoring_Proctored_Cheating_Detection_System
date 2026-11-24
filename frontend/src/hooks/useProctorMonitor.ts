@@ -149,22 +149,143 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
       logEvent("CONTEXT_MENU_ATTEMPT", "LOW", { source: "mouse.contextmenu" }, false);
     };
 
-    // 6. Developer Tools Shortcut Prevention
+    // 6. Comprehensive Extension & Unauthorized Shortcut Interception
     const handleKeyDown = (e: KeyboardEvent) => {
       keyEventsCountRef.current += 1;
 
-      // F12 or Ctrl+Shift+I or Ctrl+Shift+J or Ctrl+U
+      const keyUpper = e.key.toUpperCase();
+      const isAltKey = e.altKey && e.key !== "Alt";
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey && e.key !== "Shift";
+      const isFunctionKey = e.key.startsWith("F") && !isNaN(Number(e.key.substring(1)));
+
+      // Build readable shortcut representation
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push("Ctrl");
+      if (e.metaKey) parts.push("Cmd");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+      parts.push(e.key);
+      const shortcutName = parts.join("+");
+
+      // Developer Tools shortcuts: F12, Ctrl+Shift+I/J/C, Ctrl+U
       const isDevToolsShortcut =
         e.key === "F12" ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "I" || e.key === "i" || e.key === "J" || e.key === "j")) ||
-        ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U"));
+        (isCtrlOrMeta && e.shiftKey && ["I", "J", "C"].includes(keyUpper)) ||
+        (isCtrlOrMeta && keyUpper === "U");
+
+      // Browser Extension shortcuts:
+      // Extensions almost universally invoke via Alt+<key> (e.g., Alt+A, Alt+Shift+X, Alt+S, Alt+M),
+      // Ctrl+Shift+<key> (e.g., Ctrl+Shift+K, Ctrl+Shift+E, Ctrl+Shift+P), or Ctrl+Alt+<key>
+      const isExtensionShortcut =
+        isAltKey || // Any Alt shortcut (e.g. Alt+A, Alt+Tab, Alt+Shift+X)
+        (isCtrlOrMeta && isShift && !["I", "J", "C"].includes(keyUpper)) || // Any Ctrl+Shift+<key>
+        (isCtrlOrMeta && isAltKey); // Any Ctrl+Alt+<key>
+
+      // Unauthorized Browser Navigation/System shortcuts: Ctrl+P, Ctrl+S, Ctrl+O, Ctrl+H, Ctrl+N, Ctrl+T, Ctrl+W, F1-F11
+      const isUnauthorizedShortcut =
+        (isFunctionKey && e.key !== "F12") ||
+        (isCtrlOrMeta && ["P", "S", "O", "H", "N", "T", "W"].includes(keyUpper));
 
       if (isDevToolsShortcut) {
         e.preventDefault();
-        triggerWarning("Security Alert: Developer inspection tools are strictly prohibited.");
-        logEvent("DEVTOOLS_SHORTCUT", "CRITICAL", { key: e.key, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey }, true);
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerWarning(`Security Alert: Developer tools shortcut [${shortcutName}] is strictly prohibited.`);
+        logEvent(
+          "DEVTOOLS_SHORTCUT",
+          "CRITICAL",
+          { key: e.key, code: e.code, shortcut: shortcutName, source: "keyboard.capture" },
+          true
+        );
+        return;
+      }
+
+      if (isExtensionShortcut) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerWarning(`Security Alert: Extension shortcut [${shortcutName}] detected and blocked.`);
+        logEvent(
+          "EXTENSION_SHORTCUT_ATTEMPT",
+          "CRITICAL",
+          { key: e.key, code: e.code, shortcut: shortcutName, source: "keyboard.capture" },
+          true
+        );
+        return;
+      }
+
+      if (isUnauthorizedShortcut) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerWarning(`Notice: System shortcut [${shortcutName}] is disabled during examination.`);
+        logEvent(
+          "UNAUTHORIZED_SHORTCUT",
+          "HIGH",
+          { key: e.key, code: e.code, shortcut: shortcutName, source: "keyboard.capture" },
+          true
+        );
+        return;
       }
     };
+
+    // 7. DOM Mutation Observer: Detect Injected Browser Extension Elements
+    const EXTENSION_SIGNATURES = [
+      "chrome-extension", "moz-extension", "extension", "monica", "sider",
+      "merlin", "harpa", "chatgpt", "copilot", "ai-sidebar", "ai-assistant",
+      "ai-chat", "quillbot", "deepl", "grammarly", "ask-ai", "sidebar",
+      "floating-widget", "ai-box", "translate-tooltip"
+    ];
+
+    const checkForExtensionNode = (node: Node) => {
+      if (!(node instanceof HTMLElement)) return;
+
+      const id = (node.id || "").toLowerCase();
+      const className = typeof node.className === "string" ? node.className.toLowerCase() : "";
+      const tagName = node.tagName.toLowerCase();
+      const src = (node.getAttribute("src") || "").toLowerCase();
+
+      const isExtensionElement = EXTENSION_SIGNATURES.some((sig) =>
+        id.includes(sig) || className.includes(sig) || src.includes(sig)
+      );
+
+      const isSuspiciousIframe = tagName === "iframe" && (src.includes("extension") || src.startsWith("chrome-") || src.startsWith("moz-") || !src);
+
+      if (isExtensionElement || isSuspiciousIframe) {
+        // Attempt to neutralize injected element
+        node.style.display = "none";
+        triggerWarning("Security Alert: External browser extension assistant detected in page.");
+        logEvent(
+          "EXTENSION_DOM_INJECTION",
+          "CRITICAL",
+          {
+            tagName,
+            elementId: node.id || undefined,
+            className: typeof node.className === "string" ? node.className : undefined,
+            src: node.getAttribute("src") || undefined
+          },
+          true
+        );
+      }
+    };
+
+    // Scan pre-existing elements on mount
+    document.querySelectorAll("iframe, div[id*='extension'], div[class*='extension'], div[id*='ai-']").forEach(checkForExtensionNode);
+
+    // Observe dynamic injections
+    const mutationObserver = new MutationObserver((mutations) => {
+      for (const mut of mutations) {
+        mut.addedNodes.forEach(checkForExtensionNode);
+      }
+    });
+
+    mutationObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["id", "class", "src"]
+    });
 
     // 7. Throttled Mouse & Scroll Listeners
     const handleMouseMove = () => {
@@ -175,7 +296,7 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
       scrollCountRef.current += 1;
     };
 
-    // Register all DOM listeners
+    // Register all DOM listeners with capture phase for key events to preempt extensions
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", handleWindowBlur);
     window.addEventListener("focus", handleWindowFocus);
@@ -183,7 +304,8 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
     document.addEventListener("copy", handleCopy);
     document.addEventListener("paste", handlePaste);
     document.addEventListener("contextmenu", handleContextMenu);
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
     window.addEventListener("scroll", handleScroll, { passive: true });
 
@@ -242,11 +364,13 @@ export function useProctorMonitor({ attemptId, enabled = true, onWarning }: UseP
       document.removeEventListener("copy", handleCopy);
       document.removeEventListener("paste", handlePaste);
       document.removeEventListener("contextmenu", handleContextMenu);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true } as any);
+      document.removeEventListener("keydown", handleKeyDown, { capture: true } as any);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("beforeunload", handleBeforeUnload);
 
+      mutationObserver.disconnect();
       clearInterval(flushInterval);
       clearInterval(interactionSummaryInterval);
       if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);

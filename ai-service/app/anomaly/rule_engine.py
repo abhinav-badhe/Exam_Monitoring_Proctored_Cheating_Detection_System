@@ -51,14 +51,14 @@ class ProctorRuleEngine:
             })
             rule_points += 35.0
 
-        # Rule 3: DevTools Inspection Attempts
+        # Rule 3: DevTools & Extension Shortcuts
         devtools_count = features.get("devtools_attempt_count", 0)
         if devtools_count > 0:
             violations.append({
                 "rule": "DEVTOOLS_INSPECTION_ATTEMPT",
                 "severity": "HIGH",
                 "points": 20.0,
-                "explanation": f"Candidate attempted developer tools inspection shortcuts ({int(devtools_count)} time(s))."
+                "explanation": f"Candidate attempted unauthorized inspection or browser extension shortcuts ({int(devtools_count)} time(s))."
             })
             rule_points += 20.0
 

@@ -29,7 +29,7 @@ class BehaviouralFeatureExtractor:
                 features["copy_paste_count"] += 1.0
             elif etype == "FULLSCREEN_EXIT":
                 features["fullscreen_exit_count"] += 1.0
-            elif etype == "DEVTOOLS_SHORTCUT":
+            elif etype in ("DEVTOOLS_SHORTCUT", "EXTENSION_SHORTCUT_ATTEMPT", "UNAUTHORIZED_SHORTCUT"):
                 features["devtools_attempt_count"] += 1.0
             elif etype == "NO_FACE_DETECTED":
                 features["face_missing_count"] += 1.0
@@ -39,7 +39,7 @@ class BehaviouralFeatureExtractor:
                 features["looking_away_count"] += 1.0
             elif etype == "PHONE_DETECTED":
                 features["phone_detected_count"] += 1.0
-            elif etype in ("EXTERNAL_AI_INDICATOR", "UNAUTHORIZED_RESOURCE_INDICATOR"):
+            elif etype in ("EXTERNAL_AI_INDICATOR", "UNAUTHORIZED_RESOURCE_INDICATOR", "EXTENSION_DOM_INJECTION"):
                 features["external_indicator_count"] += 1.0
             elif etype == "INTERACTION_SUMMARY":
                 meta = evt.get("metadata", {}) or {}
