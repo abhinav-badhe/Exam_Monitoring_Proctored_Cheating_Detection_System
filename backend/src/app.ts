@@ -1,11 +1,47 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth.routes";
 import examRoutes from "./routes/exam.routes";
 import attemptRoutes from "./routes/attempt.routes";
 import proctorRoutes from "./routes/proctor.routes";
 
 const app = express();
+
+// Security HTTP headers
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
+
+// General Rate Limiting
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 600, // 600 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests from this IP, please slow down."
+  }
+});
+
+// Stricter Rate Limiting for Authentication Endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 120, // 120 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many authentication attempts from this IP, please try again later."
+  }
+});
+
+app.use("/api/", generalLimiter);
+app.use("/api/auth", authLimiter);
 
 const allowedOrigins = [
   process.env.CLIENT_URL || "http://localhost:5173",
