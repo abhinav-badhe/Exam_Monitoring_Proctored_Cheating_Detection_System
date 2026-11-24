@@ -11,6 +11,107 @@
 
 ---
 
+## ⚡ How to Run This Project
+
+Follow these steps to run the complete ProctorAI multi-tier system locally on your machine:
+
+### 1. Prerequisites
+- **Node.js**: `v20+` or `v24+` installed
+- **Python**: `3.11` or `3.12` installed
+- **PostgreSQL**: Running on port `5432` (or Docker)
+- **Git**: Installed
+
+---
+
+### 2. Database & Backend Setup
+
+Open a terminal in the project root:
+
+```bash
+cd backend
+npm install
+
+# Ensure PostgreSQL has database 'proctor_ai' created (e.g. CREATE DATABASE proctor_ai;)
+# Configure backend/.env with your DATABASE_URL if needed:
+# DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/proctor_ai?schema=public"
+
+# Synchronize database schema and seed default exams & accounts
+npx prisma db push
+npm run db:seed
+
+# Start the Node.js Express & Socket.IO server
+npm run dev
+```
+> 📡 **Backend Server:** Running on `http://localhost:5000` (Health check: `http://localhost:5000/api/health`)
+
+---
+
+### 3. Python AI Computer Vision Microservice Setup
+
+Open a **second terminal** in the project root:
+
+```bash
+cd ai-service
+
+# Create and activate Python virtual environment
+# Windows (PowerShell):
+python -m venv venv
+.\venv\Scripts\activate
+
+# Linux / macOS:
+# python3 -m venv venv
+# source venv/bin/activate
+
+# Install AI dependencies (MediaPipe, OpenCV, EasyOCR, Scikit-Learn, FastAPI)
+pip install -r requirements.txt
+
+# Start the AI perception microservice
+python -m uvicorn app.main:app --app-dir . --host 127.0.0.1 --port 8000
+```
+> 🧠 **AI Perception Service:** Running on `http://127.0.0.1:8000` (Health check: `http://127.0.0.1:8000/health`)
+
+---
+
+### 4. Frontend Client Setup
+
+Open a **third terminal** in the project root:
+
+```bash
+cd frontend
+npm install
+
+# Start Vite React client
+npm run dev
+```
+> 💻 **Frontend Web App:** Open in browser at **`http://localhost:5173`**
+
+---
+
+### 🐳 Alternative: One-Command Docker Setup
+If you have Docker & Docker Compose installed, spin up the entire multi-container stack with one command:
+```bash
+docker-compose up --build
+```
+- Frontend: `http://localhost:80`
+- Backend API: `http://localhost:5000`
+- AI Microservice: `http://localhost:8000`
+
+---
+
+### 🔑 Demo Login Accounts
+
+Pre-configured credentials for quick evaluation:
+
+| Role | Email | Password | Access & Capabilities |
+| :--- | :--- | :--- | :--- |
+| **Examiner** | `examiner@proctorai.local` | `ExaminerPass@123` | Create exams, view live monitoring grid, send warnings, freeze sessions, sign verdicts |
+| **Candidate** | `candidate@proctorai.local` | `CandidatePass@123` | Extension pre-check, take proctored exam, view score breakdown & download PDF certificate |
+| **Admin** | `admin@proctorai.local` | `AdminPass@123` | System oversight, user management, execute GDPR/FERPA retention compliance purge |
+
+*(Quick-login 1-click buttons are also provided directly on the Login page at `/login`)*
+
+---
+
 ## 🌟 Key Capabilities
 
 - **Core Examination System**: Full authentication with Role-Based Access Control (`ADMIN`, `EXAMINER`, `CANDIDATE`), rich MCQ question builder, synced countdown timers, question palette navigation, answer autosave, and automatic grading.
@@ -48,80 +149,6 @@
 |  - Human Examiner Review Records   |   |  - Scikit-Learn Isolation Forest    |
 +------------------------------------+   +-------------------------------------+
 ```
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-- Node.js `v20+` or `v24+`
-- Python `3.11` or `3.12`
-- PostgreSQL `16+` (or Docker)
-
-### 1. Database Setup
-Ensure PostgreSQL is running locally and create the database:
-```sql
-CREATE DATABASE proctor_ai;
-```
-
-### 2. Backend Setup
-```bash
-cd backend
-npm install
-# Set your DATABASE_URL in backend/.env
-npx prisma migrate dev --name initial_schema
-npm run db:seed
-npm run dev
-```
-Backend will start on `http://localhost:5000`.
-
-### 3. Python AI Microservice Setup
-```bash
-cd ai-service
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-source venv/bin/activate
-
-pip install -r requirements.txt
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-AI Microservice will start on `http://localhost:8000`.
-
-### 4. Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Frontend will be accessible at `http://localhost:5173`.
-
----
-
-## 🐳 Docker Deployment
-
-To spin up the entire multi-tier system with PostgreSQL, backend, AI microservice, and frontend:
-```bash
-docker-compose up --build
-```
-- Frontend: `http://localhost:80`
-- Backend API: `http://localhost:5000`
-- Python AI Service: `http://localhost:8000`
-
----
-
-## 🔑 Demo Seed Accounts
-
-The database seed provides pre-configured credentials:
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Examiner** | `examiner@proctorai.local` | `ExaminerPass@123` |
-| **Candidate** | `candidate@proctorai.local` | `CandidatePass@123` |
-| **Admin** | `admin@proctorai.local` | `AdminPass@123` |
-
-Quick-login demo buttons are also provided directly on the Login page (`/login`).
 
 ---
 
