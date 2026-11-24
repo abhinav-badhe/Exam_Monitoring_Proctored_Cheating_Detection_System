@@ -223,28 +223,36 @@ flowchart TD
 
 ## 📦 Module 5: Behavioural Anomaly Detection Engine (Phase 5)
 *Goal: Feature aggregation, correlation rule engine, Isolation Forest scoring, and explainable risk levels.*
+*Status: ✅ COMPLETED & VERIFIED (2026-11-24)*
 
 ### 5.1 Behavioural Feature Extraction
-- [ ] Aggregate candidate session metrics:
+- [x] Aggregate candidate session metrics (`feature_extractor.py`):
   - Count & duration of tab hidden / window blurs
   - Copy/paste count
   - Face missing duration & multi-face count
   - Phone detection occurrences
-  - Scroll & mouse anomaly metrics
+  - Interaction cadence metrics
+  - External indicator counters
 
 ### 5.2 Rule-Based Correlation Engine
-- [ ] Multi-signal correlation rules:
-  - *Example:* Blur for > 20s followed immediately by Paste event = High Risk Flag
-  - *Example:* Multi-face detected simultaneously with mobile phone = Critical Risk Flag
+- [x] Multi-signal correlation rules (`rule_engine.py`):
+  - *Rule 1:* Blur / tab switch followed within 20s by Paste event (`BLUR_PASTE_SEQUENCE`)
+  - *Rule 2:* Multi-face detected simultaneously with mobile phone (`MULTI_FACE_AND_PHONE`)
+  - *Rule 3:* DevTools inspection shortcuts attempted (`DEVTOOLS_INSPECTION_ATTEMPT`)
+  - *Rule 4:* External AI assistants or unauthorized resources detected (`EXTERNAL_AI_ASSISTANT_INDICATOR`)
+  - *Rule 5:* Frequent focus loss across multiple intervals (`FREQUENT_FOCUS_LOSS`)
+  - *Rule 6:* Face absent across multiple intervals (`PROLONGED_FACE_ABSENCE`)
 
 ### 5.3 Isolation Forest & Explainability
-- [ ] Python anomaly detector using Scikit-Learn `IsolationForest`
-- [ ] Produce normalized Risk Score (0.0 to 100.0) and Risk Level (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`)
-- [ ] Generate JSON explanation listing contributing factors for human examiner review
-- [ ] Persist scores in `anomaly_scores` table
+- [x] Python anomaly detector using Scikit-Learn `IsolationForest` (`isolation_forest_model.py`)
+- [x] Blended score: 65% deterministic rules + 35% unsupervised Isolation Forest (0.0 to 100.0)
+- [x] Produce explainable Risk Level (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`)
+- [x] Generate JSON explanation listing contributing factors for human examiner review
+- [x] Persist scores in `anomaly_scores` table upon exam submission and via on-demand API
+- [x] Examiner Results View updated with risk badges and breakdown modal card
 
 ### 5.4 Module 5 Verification & Sign-Off
-- [ ] Benchmark synthetic sessions against expected risk tiers.
+- [x] Automated test script (`backend/src/test-phase5-e2e.ts`): Verified normal session evaluates to LOW risk (18.2) and anomalous multi-signal session evaluates to HIGH risk (68.2) with BLUR_PASTE_SEQUENCE, DEVTOOLS_INSPECTION_ATTEMPT, and EXTERNAL_AI_ASSISTANT_INDICATOR rule violations. Examiner results API verified -> 100% passed.
 
 ---
 

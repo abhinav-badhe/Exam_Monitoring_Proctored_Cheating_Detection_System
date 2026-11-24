@@ -61,3 +61,16 @@ export async function analyzeScreenFrame(req: Request, res: Response) {
     return sendError(res, error.message || "Failed to analyze screen frame", 400);
   }
 }
+
+export async function evaluateAnomaly(req: Request, res: Response) {
+  try {
+    const result = await proctorService.evaluateAttemptAnomaly(
+      req.params.attemptId as string,
+      req.user!.userId,
+      req.user!.role
+    );
+    return sendSuccess(res, result, "Attempt anomaly evaluation completed");
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to evaluate anomaly", 400);
+  }
+}

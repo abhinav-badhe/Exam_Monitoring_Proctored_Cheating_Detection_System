@@ -47,4 +47,11 @@ router.get(
   proctorController.getAttemptEvents
 );
 
+// Evaluate behavioural anomaly score
+router.post(
+  "/attempts/:attemptId/evaluate-anomaly",
+  authenticate,
+  proctorController.evaluateAnomaly
+);
+
 export default router;

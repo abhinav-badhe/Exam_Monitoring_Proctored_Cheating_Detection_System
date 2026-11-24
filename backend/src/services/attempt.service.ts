@@ -1,6 +1,7 @@
 import { prisma } from "../config/database";
 import { SaveAnswerInput } from "../validators/attempt.validator";
 import { AttemptStatus, ExamStatus, QuestionType, UserRole } from "@prisma/client";
+import { evaluateAttemptAnomaly } from "./proctor.service";
 
 export async function startAttempt(candidateId: string, examId: string) {
   const exam = await prisma.exam.findUnique({
@@ -221,7 +222,7 @@ async function calculateAndFinalizeScore(attempt: any, finalStatus: AttemptStatu
     }
   }
 
-  return prisma.examAttempt.update({
+  const finalizedAttempt = await prisma.examAttempt.update({
     where: { id: attempt.id },
     data: {
       status: finalStatus,
@@ -230,9 +231,19 @@ async function calculateAndFinalizeScore(attempt: any, finalStatus: AttemptStatu
     },
     include: {
       answers: true,
-      exam: true
+      exam: true,
+      scores: true
     }
   });
+
+  // Automatically trigger behavioural anomaly evaluation
+  try {
+    await evaluateAttemptAnomaly(attempt.id);
+  } catch (err: any) {
+    console.warn("Notice: Anomaly evaluation deferred or backgrounded:", err.message);
+  }
+
+  return finalizedAttempt;
 }
 
 export async function getExamResults(examId: string, examinerId: string, userRole: UserRole) {
@@ -257,6 +268,10 @@ export async function getExamResults(examId: string, examinerId: string, userRol
           fullName: true,
           email: true
         }
+      },
+      scores: {
+        orderBy: { createdAt: "desc" },
+        take: 1
       },
       _count: {
         select: {

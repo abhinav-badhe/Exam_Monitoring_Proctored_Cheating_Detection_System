@@ -1,6 +1,6 @@
 import { prisma } from "../config/database";
 import { IngestEventsInput, SingleProctorEvent } from "../validators/proctor.validator";
-import { AttemptStatus, EventSeverity, UserRole } from "@prisma/client";
+import { AttemptStatus, EventSeverity, UserRole, RiskLevel } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 
@@ -272,4 +272,87 @@ export async function analyzeAndLogScreenFrame(
   }
 
   return ocrResult;
+}
+
+export async function evaluateAttemptAnomaly(
+  attemptId: string,
+  userId?: string,
+  userRole?: UserRole
+) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId },
+    include: {
+      events: {
+        orderBy: { createdAt: "asc" }
+      }
+    }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  if (userRole === UserRole.CANDIDATE && attempt.candidateId !== userId) {
+    throw new Error("Access denied: You do not own this exam attempt");
+  }
+
+  // Payload for Python AI microservice
+  const payload = {
+    attemptId,
+    events: attempt.events.map((e) => ({
+      eventType: e.eventType,
+      severity: e.severity,
+      metadata: e.metadata,
+      createdAt: e.createdAt.toISOString()
+    }))
+  };
+
+  let aiRes: any;
+  try {
+    const res = await fetch(`${AI_SERVICE_URL}/api/anomaly/evaluate-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`AI anomaly service error (${res.status}): ${errText}`);
+    }
+
+    aiRes = await res.json();
+  } catch (err: any) {
+    console.warn("Notice: AI anomaly service unreachable, using rule baseline:", err.message);
+    // Local fallback heuristic
+    const highEvents = attempt.events.filter((e) => e.severity === EventSeverity.HIGH || e.severity === EventSeverity.CRITICAL).length;
+    const fallbackScore = Math.min(100, highEvents * 20);
+    const fallbackLevel = fallbackScore > 75 ? RiskLevel.CRITICAL : fallbackScore > 50 ? RiskLevel.HIGH : fallbackScore > 25 ? RiskLevel.MEDIUM : RiskLevel.LOW;
+
+    aiRes = {
+      score: fallbackScore,
+      riskLevel: fallbackLevel,
+      explanation: { note: "Local fallback anomaly evaluation", highEventCount: highEvents },
+      modelVersion: "Fallback-Heuristic-v1"
+    };
+  }
+
+  // Persist into anomaly_scores table
+  const recordedScore = await prisma.anomalyScore.create({
+    data: {
+      attemptId,
+      score: aiRes.score,
+      riskLevel: aiRes.riskLevel as RiskLevel,
+      explanation: aiRes.explanation,
+      modelVersion: aiRes.modelVersion
+    }
+  });
+
+  return recordedScore;
+}
+
+export async function getAttemptAnomalyScore(attemptId: string) {
+  return prisma.anomalyScore.findFirst({
+    where: { attemptId },
+    orderBy: { createdAt: "desc" }
+  });
 }

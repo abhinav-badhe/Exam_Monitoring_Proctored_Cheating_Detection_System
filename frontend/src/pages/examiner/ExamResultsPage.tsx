@@ -4,7 +4,7 @@ import { attemptService } from "../../services/attempt.service";
 import { examService } from "../../services/exam.service";
 import { proctorService, ProctorEventsResponse } from "../../services/proctor.service";
 import { ExamAttempt, Exam } from "../../types";
-import { ArrowLeft, Users, Trophy, ShieldAlert, AlertCircle, X, Activity } from "lucide-react";
+import { ArrowLeft, Users, Trophy, ShieldAlert, AlertCircle, X, Activity, BrainCircuit, AlertTriangle, ShieldCheck } from "lucide-react";
 
 export const ExamResultsPage: React.FC = () => {
   const { examId } = useParams<{ examId: string }>();
@@ -14,41 +14,102 @@ export const ExamResultsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Proctoring audit modal
-  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+  const [selectedAttempt, setSelectedAttempt] = useState<ExamAttempt | null>(null);
   const [proctorLogs, setProctorLogs] = useState<ProctorEventsResponse | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [evaluatingAnomaly, setEvaluatingAnomaly] = useState(false);
+
+  const fetchData = async () => {
+    if (!examId) return;
+    try {
+      setLoading(true);
+      const [examData, attemptsData] = await Promise.all([
+        examService.getExamById(examId),
+        attemptService.getExamResults(examId)
+      ]);
+      setExam(examData);
+      setResults(attemptsData);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to load examination results");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!examId) return;
-      try {
-        setLoading(true);
-        const [examData, attemptsData] = await Promise.all([
-          examService.getExamById(examId),
-          attemptService.getExamResults(examId)
-        ]);
-        setExam(examData);
-        setResults(attemptsData);
-      } catch (err: any) {
-        setError(err.response?.data?.message || "Failed to load examination results");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, [examId]);
 
-  const handleOpenProctorModal = async (attemptId: string) => {
-    setSelectedAttemptId(attemptId);
+  const handleOpenProctorModal = async (attempt: ExamAttempt) => {
+    setSelectedAttempt(attempt);
     setLoadingLogs(true);
     try {
-      const logs = await proctorService.getAttemptEvents(attemptId);
+      const logs = await proctorService.getAttemptEvents(attempt.id);
       setProctorLogs(logs);
     } catch (err: any) {
       console.error("Failed to load proctor events:", err);
     } finally {
       setLoadingLogs(false);
+    }
+  };
+
+  const handleRunAnomalyEvaluation = async (attemptId: string) => {
+    setEvaluatingAnomaly(true);
+    try {
+      await proctorService.evaluateAttemptAnomaly(attemptId);
+      await fetchData();
+      // Refresh current modal attempt
+      const updatedAttempts = await attemptService.getExamResults(examId!);
+      const current = updatedAttempts.find((a) => a.id === attemptId);
+      if (current) setSelectedAttempt(current);
+    } catch (err: any) {
+      console.error("Failed to run anomaly evaluation:", err);
+    } finally {
+      setEvaluatingAnomaly(false);
+    }
+  };
+
+  const getRiskBadge = (scoreObj?: any) => {
+    if (!scoreObj) {
+      return (
+        <span className="px-2.5 py-1 text-xs font-medium bg-slate-100 text-slate-500 rounded-lg">
+          Unscored
+        </span>
+      );
+    }
+
+    const level = scoreObj.riskLevel;
+    const score = Math.round(scoreObj.score);
+
+    switch (level) {
+      case "CRITICAL":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-600 text-white shadow-xs">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            CRITICAL ({score})
+          </span>
+        );
+      case "HIGH":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            HIGH ({score})
+          </span>
+        );
+      case "MEDIUM":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+            <Activity className="w-3.5 h-3.5" />
+            MEDIUM ({score})
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            LOW ({score})
+          </span>
+        );
     }
   };
 
@@ -84,10 +145,10 @@ export const ExamResultsPage: React.FC = () => {
       {/* Header */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 mb-8">
         <h1 className="text-xl font-bold text-slate-900">
-          Submissions & Grading: {exam?.title}
+          Submissions & Proctoring Audit: {exam?.title}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Automated MCQ grading results, candidate session status, and proctoring telemetry logs
+          Automated evaluation scores, multi-signal behavioural risk indicators, and proctoring telemetry audit
         </p>
 
         <div className="mt-4 flex items-center gap-6 text-xs text-slate-600">
@@ -126,14 +187,14 @@ export const ExamResultsPage: React.FC = () => {
                   <th className="px-6 py-3.5">Candidate Name</th>
                   <th className="px-6 py-3.5">Email</th>
                   <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5">Score Awarded</th>
-                  <th className="px-6 py-3.5">Proctoring Telemetry</th>
-                  <th className="px-6 py-3.5 text-right">Action</th>
+                  <th className="px-6 py-3.5">Exam Score</th>
+                  <th className="px-6 py-3.5">Anomaly Risk Score</th>
+                  <th className="px-6 py-3.5 text-right">Audit Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {results.map((att: any) => {
-                  const eventCount = att._count?.events || 0;
+                  const latestScore = att.scores && att.scores.length > 0 ? att.scores[0] : null;
                   return (
                     <tr key={att.id} className="hover:bg-slate-50/75 transition">
                       <td className="px-6 py-4 font-semibold text-slate-900">
@@ -160,23 +221,14 @@ export const ExamResultsPage: React.FC = () => {
                         <span className="text-xs text-slate-400 ml-1">/ {exam?.totalMarks}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
-                            eventCount > 0
-                              ? "bg-amber-50 text-amber-800 border border-amber-200"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          <Activity className="w-3.5 h-3.5" />
-                          {eventCount} incident(s) logged
-                        </span>
+                        {getRiskBadge(latestScore)}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() => handleOpenProctorModal(att.id)}
+                          onClick={() => handleOpenProctorModal(att)}
                           className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
                         >
-                          Audit Logs
+                          Audit Session
                         </button>
                       </td>
                     </tr>
@@ -188,18 +240,22 @@ export const ExamResultsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Proctoring Audit Logs Modal */}
-      {selectedAttemptId && (
+      {/* Proctoring Audit Logs & Explainable Anomaly Modal */}
+      {selectedAttempt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-900 text-base">Candidate Proctoring Telemetry Audit</h3>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Candidate Integrity & Telemetry Audit</h3>
+                  <p className="text-xs text-slate-500">{selectedAttempt.candidate?.fullName} ({selectedAttempt.candidate?.email})</p>
+                </div>
               </div>
               <button
                 onClick={() => {
-                  setSelectedAttemptId(null);
+                  setSelectedAttempt(null);
                   setProctorLogs(null);
                 }}
                 className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition"
@@ -208,40 +264,93 @@ export const ExamResultsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              {loadingLogs ? (
-                <div className="p-12 text-center text-slate-500">Loading proctoring event stream...</div>
-              ) : !proctorLogs || proctorLogs.events.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">
-                  <p className="font-medium">No proctoring anomalies or events recorded for this session.</p>
-                  <p className="text-xs text-slate-400 mt-1">The candidate maintained clean focus throughout the attempt.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Severity Breakdown Badges */}
-                  <div className="flex items-center gap-2 flex-wrap pb-4 border-b border-slate-100">
-                    <span className="text-xs font-bold uppercase text-slate-400 mr-2">Severity Breakdown:</span>
-                    {Object.entries(proctorLogs.severityBreakdown).map(([sev, cnt]) => (
-                      <span key={sev} className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 border text-slate-700">
-                        {sev}: <strong>{cnt}</strong>
-                      </span>
-                    ))}
-                  </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Anomaly Assessment Score Card */}
+              {selectedAttempt.scores && selectedAttempt.scores.length > 0 ? (
+                (() => {
+                  const scoreObj = selectedAttempt.scores[0];
+                  const explanation = scoreObj.explanation || {};
+                  return (
+                    <div className="p-5 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-blue-50/40">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <BrainCircuit className="w-5 h-5 text-blue-600" />
+                          <h4 className="font-bold text-slate-900 text-sm">Behavioural Anomaly Risk Assessment</h4>
+                        </div>
+                        {getRiskBadge(scoreObj)}
+                      </div>
 
-                  {/* Chronological Event Timeline */}
-                  <div className="space-y-3">
-                    {proctorLogs.events.map((evt, idx) => (
+                      <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                        <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                          <p className="text-2xs uppercase text-slate-400 font-semibold">Total Risk Score</p>
+                          <p className="text-xl font-extrabold text-slate-900 mt-0.5">{Math.round(scoreObj.score)} / 100</p>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                          <p className="text-2xs uppercase text-slate-400 font-semibold">Rule Engine Score</p>
+                          <p className="text-xl font-bold text-slate-700 mt-0.5">{explanation.ruleScore ?? "--"}</p>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                          <p className="text-2xs uppercase text-slate-400 font-semibold">Isolation Forest ML</p>
+                          <p className="text-xl font-bold text-slate-700 mt-0.5">{explanation.mlIsolationForestScore ?? "--"}</p>
+                        </div>
+                      </div>
+
+                      {/* Rule Violations Breakdown */}
+                      {explanation.ruleViolations && explanation.ruleViolations.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Triggered Correlation Flags:</p>
+                          {explanation.ruleViolations.map((v: any, idx: number) => (
+                            <div key={idx} className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-bold font-mono text-2xs mr-1">[{v.rule}]</span>
+                                {v.explanation}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <p className="text-2xs text-slate-400 mt-3 italic">{explanation.disclaimer}</p>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-slate-600">Session anomaly score has not been calculated yet.</span>
+                  <button
+                    onClick={() => handleRunAnomalyEvaluation(selectedAttempt.id)}
+                    disabled={evaluatingAnomaly}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg transition disabled:opacity-50"
+                  >
+                    {evaluatingAnomaly ? "Calculating..." : "Compute Anomaly Score"}
+                  </button>
+                </div>
+              )}
+
+              {/* Event Stream Section */}
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm mb-3">Chronological Proctoring Telemetry</h4>
+                {loadingLogs ? (
+                  <div className="p-8 text-center text-slate-500 text-xs">Loading proctoring event stream...</div>
+                ) : !proctorLogs || proctorLogs.events.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                    No proctoring anomalies recorded for this session.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {proctorLogs.events.map((evt: any, idx: number) => (
                       <div
                         key={evt.id || idx}
-                        className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex items-start justify-between gap-3 text-xs"
+                        className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 flex items-start justify-between gap-3 text-xs"
                       >
                         <div>
                           <div className="flex items-center gap-2">
                             {getSeverityBadge(evt.severity)}
-                            <span className="font-bold text-slate-900 text-sm font-mono">{evt.eventType}</span>
+                            <span className="font-bold text-slate-900 font-mono text-xs">{evt.eventType}</span>
                           </div>
                           {evt.metadata && Object.keys(evt.metadata).length > 0 && (
-                            <pre className="mt-2 text-2xs font-mono bg-white p-2 rounded border border-slate-200 text-slate-600 overflow-x-auto max-w-md">
+                            <pre className="mt-1 text-2xs font-mono bg-white p-1.5 rounded border border-slate-200 text-slate-600 overflow-x-auto max-w-lg">
                               {JSON.stringify(evt.metadata, null, 2)}
                             </pre>
                           )}
@@ -256,14 +365,14 @@ export const ExamResultsPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
               <button
                 onClick={() => {
-                  setSelectedAttemptId(null);
+                  setSelectedAttempt(null);
                   setProctorLogs(null);
                 }}
                 className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-lg transition"

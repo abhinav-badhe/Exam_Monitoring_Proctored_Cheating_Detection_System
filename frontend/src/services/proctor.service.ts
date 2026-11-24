@@ -89,5 +89,10 @@ export const proctorService = {
       }
     });
     return res.data.data;
+  },
+
+  async evaluateAttemptAnomaly(attemptId: string): Promise<any> {
+    const res = await api.post(`/proctor/attempts/${attemptId}/evaluate-anomaly`);
+    return res.data.data;
   }
 };

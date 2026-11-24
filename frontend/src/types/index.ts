@@ -62,6 +62,16 @@ export interface Answer {
   selectedOption?: Option;
 }
 
+export interface AnomalyScore {
+  id: string;
+  attemptId: string;
+  score: number;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  explanation?: any;
+  modelVersion?: string;
+  createdAt: string;
+}
+
 export interface ExamAttempt {
   id: string;
   examId: string;
@@ -74,4 +84,5 @@ export interface ExamAttempt {
   exam: Exam;
   answers: Answer[];
   candidate?: User;
+  scores?: AnomalyScore[];
 }
