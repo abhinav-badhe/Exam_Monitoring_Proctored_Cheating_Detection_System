@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { attemptService } from "../../services/attempt.service";
 import { useProctorMonitor } from "../../hooks/useProctorMonitor";
+import { WebcamMonitor } from "../../components/exam/WebcamMonitor";
 import { ExamAttempt, Question } from "../../types";
 import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle } from "lucide-react";
 
@@ -15,6 +16,7 @@ export const ExamInterfacePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameraWarning, setCameraWarning] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const timerRef = useRef<any>(null);
@@ -24,6 +26,8 @@ export const ExamInterfacePage: React.FC = () => {
     attemptId: id || null,
     enabled: !!attempt && attempt.status === "IN_PROGRESS"
   });
+
+  const displayWarning = activeWarning || cameraWarning;
 
   useEffect(() => {
     const fetchAttempt = async () => {
@@ -195,11 +199,11 @@ export const ExamInterfacePage: React.FC = () => {
       </header>
 
       {/* Floating Active Warning Banner */}
-      {activeWarning && (
+      {displayWarning && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-xl w-full px-4 animate-bounce">
           <div className="bg-rose-600 text-white p-3.5 rounded-xl shadow-lg border border-rose-700 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0" />
-            <p className="text-xs font-semibold leading-relaxed">{activeWarning}</p>
+            <p className="text-xs font-semibold leading-relaxed">{displayWarning}</p>
           </div>
         </div>
       )}
@@ -376,6 +380,18 @@ export const ExamInterfacePage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Module 3: Active Floating Webcam Telemetry Monitor */}
+      {id && (
+        <WebcamMonitor
+          attemptId={id}
+          enabled={!!attempt && attempt.status === "IN_PROGRESS"}
+          onAnomaly={(msg) => {
+            setCameraWarning(msg);
+            setTimeout(() => setCameraWarning(null), 4500);
+          }}
+        />
       )}
     </div>
   );

@@ -21,6 +21,27 @@ export interface ProctorEventsResponse {
   }>;
 }
 
+export interface CVAnalysisResult {
+  faceDetected: boolean;
+  faceCount: number;
+  lookingAway: boolean;
+  headPose?: {
+    yaw: number;
+    pitch: number;
+    roll: number;
+  };
+  phoneDetected: boolean;
+  phoneConfidence: number;
+  anomalies: Array<{
+    eventType: string;
+    severity: string;
+    description: string;
+    confidence: number;
+    metadata?: Record<string, any>;
+  }>;
+  processedTimestamp: string;
+}
+
 export const proctorService = {
   async ingestEvents(attemptId: string, events: ProctorEventPayload[]) {
     if (events.length === 0) return;
@@ -33,6 +54,18 @@ export const proctorService = {
 
   async getAttemptEvents(attemptId: string): Promise<ProctorEventsResponse> {
     const res = await api.get(`/proctor/attempts/${attemptId}/events`);
+    return res.data.data;
+  },
+
+  async analyzeFrame(attemptId: string, imageBlob: Blob): Promise<CVAnalysisResult> {
+    const formData = new FormData();
+    formData.append("frame", imageBlob, "frame.jpg");
+
+    const res = await api.post(`/proctor/attempts/${attemptId}/frame`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data"
+      }
+    });
     return res.data.data;
   }
 };

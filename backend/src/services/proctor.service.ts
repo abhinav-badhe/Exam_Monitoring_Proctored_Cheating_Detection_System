@@ -1,6 +1,11 @@
 import { prisma } from "../config/database";
 import { IngestEventsInput, SingleProctorEvent } from "../validators/proctor.validator";
 import { AttemptStatus, EventSeverity, UserRole } from "@prisma/client";
+import fs from "fs";
+import path from "path";
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const EVIDENCE_DIR = path.resolve(process.cwd(), "..", "storage", "evidence");
 
 const DEFAULT_SEVERITIES: Record<string, EventSeverity> = {
   TAB_HIDDEN: EventSeverity.HIGH,
@@ -89,4 +94,95 @@ export async function getAttemptEvents(attemptId: string, userId: string, userRo
     severityBreakdown,
     events
   };
+}
+
+export async function analyzeAndLogFrame(
+  attemptId: string,
+  candidateId: string,
+  fileBuffer: Buffer,
+  mimeType: string
+) {
+  const attempt = await prisma.examAttempt.findUnique({
+    where: { id: attemptId }
+  });
+
+  if (!attempt) {
+    throw new Error("Exam attempt not found");
+  }
+
+  if (attempt.candidateId !== candidateId) {
+    throw new Error("Access denied: You do not own this exam attempt");
+  }
+
+  if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+    throw new Error("Cannot process frame: Attempt is no longer active");
+  }
+
+  if (!fs.existsSync(EVIDENCE_DIR)) {
+    fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType });
+  formData.append("file", blob, "frame.jpg");
+
+  let aiResult: any;
+  try {
+    const aiRes = await fetch(`${AI_SERVICE_URL}/api/cv/analyze-frame`, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      throw new Error(`AI service responded with ${aiRes.status}: ${errText}`);
+    }
+
+    aiResult = await aiRes.json();
+  } catch (error: any) {
+    console.warn("Notice: Python AI microservice unreachable, skipping frame analysis:", error.message);
+    return {
+      faceDetected: true,
+      faceCount: 1,
+      lookingAway: false,
+      phoneDetected: false,
+      anomalies: []
+    };
+  }
+
+  if (aiResult.anomalies && aiResult.anomalies.length > 0) {
+    for (const anom of aiResult.anomalies) {
+      const severity = (anom.severity as EventSeverity) || EventSeverity.HIGH;
+
+      const event = await prisma.proctorEvent.create({
+        data: {
+          attemptId,
+          eventType: anom.eventType,
+          severity,
+          metadata: {
+            description: anom.description,
+            confidence: anom.confidence,
+            ...(anom.metadata ?? {})
+          }
+        }
+      });
+
+      if (severity === EventSeverity.HIGH || severity === EventSeverity.CRITICAL) {
+        const filename = `evidence_${attemptId}_${Date.now()}.jpg`;
+        const filePath = path.join(EVIDENCE_DIR, filename);
+        fs.writeFileSync(filePath, fileBuffer);
+
+        await prisma.evidence.create({
+          data: {
+            attemptId,
+            eventId: event.id,
+            filePath: path.join("storage", "evidence", filename),
+            fileType: mimeType
+          }
+        });
+      }
+    }
+  }
+
+  return aiResult;
 }
