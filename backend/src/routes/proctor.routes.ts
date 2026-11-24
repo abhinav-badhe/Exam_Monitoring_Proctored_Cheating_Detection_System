@@ -54,4 +54,12 @@ router.post(
   proctorController.evaluateAnomaly
 );
 
+// Admin-only FERPA/GDPR compliance data retention purge
+router.post(
+  "/maintenance/purge-expired",
+  authenticate,
+  authorize([UserRole.ADMIN]),
+  proctorController.purgeRetentionData
+);
+
 export default router;

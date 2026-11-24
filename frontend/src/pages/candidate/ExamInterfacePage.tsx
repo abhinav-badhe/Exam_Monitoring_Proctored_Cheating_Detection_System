@@ -5,6 +5,7 @@ import { getSocket } from "../../services/socket.service";
 import { useProctorMonitor } from "../../hooks/useProctorMonitor";
 import { WebcamMonitor } from "../../components/exam/WebcamMonitor";
 import { ScreenMonitor } from "../../components/exam/ScreenMonitor";
+import { AudioMonitor } from "../../components/exam/AudioMonitor";
 import { ExamAttempt, Question } from "../../types";
 import { scanForActiveExtensions } from "../../utils/extensionDetector";
 import { Clock, ShieldCheck, ChevronLeft, ChevronRight, AlertCircle, Maximize2, AlertTriangle, ShieldAlert, XCircle } from "lucide-react";
@@ -523,6 +524,18 @@ export const ExamInterfacePage: React.FC = () => {
           attemptId={id}
           enabled={!!attempt && attempt.status === "IN_PROGRESS"}
           onAnomaly={(msg) => {
+            setCameraWarning(msg);
+            setTimeout(() => setCameraWarning(null), 4500);
+          }}
+        />
+      )}
+
+      {/* Production Audio & Acoustic Proctoring Monitor */}
+      {id && (
+        <AudioMonitor
+          attemptId={id}
+          enabled={!!attempt && attempt.status === "IN_PROGRESS"}
+          onAudioAnomaly={(msg) => {
             setCameraWarning(msg);
             setTimeout(() => setCameraWarning(null), 4500);
           }}

@@ -4,7 +4,8 @@ import { attemptService } from "../../services/attempt.service";
 import { examService } from "../../services/exam.service";
 import { proctorService, ProctorEventsResponse } from "../../services/proctor.service";
 import { ExamAttempt, Exam } from "../../types";
-import { ArrowLeft, Users, Trophy, ShieldAlert, AlertCircle, X, Activity, BrainCircuit, AlertTriangle, ShieldCheck } from "lucide-react";
+import { generateExamIntegrityPDF } from "../../utils/pdfReportGenerator";
+import { ArrowLeft, Users, Trophy, ShieldAlert, AlertCircle, X, Activity, BrainCircuit, AlertTriangle, ShieldCheck, FileText, Download } from "lucide-react";
 
 export const ExamResultsPage: React.FC = () => {
   const { examId } = useParams<{ examId: string }>();
@@ -280,12 +281,25 @@ export const ExamResultsPage: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleOpenProctorModal(att)}
-                          className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-                        >
-                          Audit Session
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenProctorModal(att)}
+                            className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+                          >
+                            Audit Session
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (exam) {
+                                generateExamIntegrityPDF({ exam, attempt: att });
+                              }
+                            }}
+                            title="Download PDF Integrity Report"
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200 transition"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -493,7 +507,24 @@ export const ExamResultsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  if (exam && selectedAttempt) {
+                    generateExamIntegrityPDF({
+                      exam,
+                      attempt: selectedAttempt,
+                      proctorEvents: proctorLogs?.events || []
+                    });
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download Official PDF Report
+              </button>
+
               <button
                 onClick={() => {
                   setSelectedAttempt(null);

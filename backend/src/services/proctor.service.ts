@@ -2,6 +2,7 @@ import { prisma } from "../config/database";
 import { IngestEventsInput, SingleProctorEvent } from "../validators/proctor.validator";
 import { AttemptStatus, EventSeverity, UserRole, RiskLevel } from "@prisma/client";
 import { broadcastExamAlert } from "../socket";
+import { storageService } from "./storage.service";
 import fs from "fs";
 import path from "path";
 
@@ -22,6 +23,8 @@ const DEFAULT_SEVERITIES: Record<string, EventSeverity> = {
   EXTENSION_SHORTCUT_ATTEMPT: EventSeverity.CRITICAL,
   UNAUTHORIZED_SHORTCUT: EventSeverity.HIGH,
   EXTENSION_DOM_INJECTION: EventSeverity.CRITICAL,
+  VOICE_ACTIVITY_DETECTED: EventSeverity.HIGH,
+  HIGH_NOISE_LEVEL: EventSeverity.MEDIUM,
   INTERACTION_SUMMARY: EventSeverity.INFO,
   KEYBOARD_BURST: EventSeverity.LOW,
   PROLONGED_INACTIVITY: EventSeverity.MEDIUM
@@ -219,14 +222,13 @@ export async function analyzeAndLogFrame(
 
       if (severity === EventSeverity.HIGH || severity === EventSeverity.CRITICAL) {
         const filename = `evidence_${attemptId}_${Date.now()}.jpg`;
-        const filePath = path.join(EVIDENCE_DIR, filename);
-        fs.writeFileSync(filePath, fileBuffer);
+        const { filePath } = await storageService.saveEvidence(filename, fileBuffer, mimeType);
 
         await prisma.evidence.create({
           data: {
             attemptId,
             eventId: event.id,
-            filePath: path.join("storage", "evidence", filename),
+            filePath,
             fileType: mimeType
           }
         });
@@ -330,14 +332,13 @@ export async function analyzeAndLogScreenFrame(
       });
 
       const filename = `screen_${attemptId}_${Date.now()}.jpg`;
-      const filePath = path.join(EVIDENCE_DIR, filename);
-      fs.writeFileSync(filePath, fileBuffer);
+      const { filePath } = await storageService.saveEvidence(filename, fileBuffer, mimeType);
 
       await prisma.evidence.create({
         data: {
           attemptId,
           eventId: event.id,
-          filePath: path.join("storage", "evidence", filename),
+          filePath,
           fileType: mimeType
         }
       });

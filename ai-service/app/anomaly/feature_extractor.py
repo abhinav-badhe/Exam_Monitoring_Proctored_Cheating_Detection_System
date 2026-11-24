@@ -39,7 +39,7 @@ class BehaviouralFeatureExtractor:
                 features["looking_away_count"] += 1.0
             elif etype == "PHONE_DETECTED":
                 features["phone_detected_count"] += 1.0
-            elif etype in ("EXTERNAL_AI_INDICATOR", "UNAUTHORIZED_RESOURCE_INDICATOR", "EXTENSION_DOM_INJECTION"):
+            elif etype in ("EXTERNAL_AI_INDICATOR", "UNAUTHORIZED_RESOURCE_INDICATOR", "EXTENSION_DOM_INJECTION", "VOICE_ACTIVITY_DETECTED"):
                 features["external_indicator_count"] += 1.0
             elif etype == "INTERACTION_SUMMARY":
                 meta = evt.get("metadata", {}) or {}

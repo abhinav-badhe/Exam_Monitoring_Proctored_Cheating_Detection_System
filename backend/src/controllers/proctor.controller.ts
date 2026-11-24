@@ -74,3 +74,14 @@ export async function evaluateAnomaly(req: Request, res: Response) {
     return sendError(res, error.message || "Failed to evaluate anomaly", 400);
   }
 }
+
+export async function purgeRetentionData(req: Request, res: Response) {
+  try {
+    const days = req.query.days ? parseInt(req.query.days as string, 10) : 90;
+    const { storageService } = await import("../services/storage.service");
+    const result = await storageService.purgeExpiredEvidence(days);
+    return sendSuccess(res, result, "FERPA/GDPR compliance data purge executed successfully");
+  } catch (error: any) {
+    return sendError(res, error.message || "Failed to execute compliance purge", 500);
+  }
+}

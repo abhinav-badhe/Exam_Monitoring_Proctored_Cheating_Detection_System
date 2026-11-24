@@ -95,5 +95,16 @@ class ProctorRuleEngine:
             })
             rule_points += 15.0
 
+        # Rule 7: Acoustic Voice & Verbal Communication Detection
+        voice_events = [e for e in events if e.get("eventType") == "VOICE_ACTIVITY_DETECTED"]
+        if len(voice_events) > 0:
+            violations.append({
+                "rule": "VERBAL_COMMUNICATION_DETECTED",
+                "severity": "HIGH",
+                "points": 25.0,
+                "explanation": f"Acoustic guard detected sustained verbal communication or speaking ({len(voice_events)} incident(s))."
+            })
+            rule_points += 25.0
+
         normalized_score = min(100.0, rule_points)
         return normalized_score, violations
